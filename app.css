@@ -123,9 +123,11 @@ body.no-tabs .tabbar{display:none}
 .thumb{width:42px;height:54px;border-radius:8px;background:var(--badge) center/cover no-repeat;flex:none;display:grid;place-items:center;color:var(--ink-3);overflow:hidden}
 .thumb svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .brow .mid{flex:1;min-width:0}
-.brow .t1{font-size:var(--fs-md);font-weight:var(--w-semi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brow .t2{font-size:var(--fs-sm);color:var(--ink-2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px}
+/* Lieferant höchstens zwei Zeilen, dann „…“ – als Block, sonst greift das Abschneiden nicht */
+.brow .t1{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;font-size:var(--fs-md);font-weight:var(--w-semi);line-height:1.25}
+.brow .t2{font-size:var(--fs-sm);color:var(--ink-2);margin-top:3px;display:flex;align-items:center;gap:6px;min-width:0}
 .brow .t2 i{width:8px;height:8px;border-radius:2px;flex:none}
+.brow .t2 > span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brow .right{text-align:right;flex:none}
 .brow .amt{font-size:var(--fs-md);font-weight:var(--w-semi);white-space:nowrap}
 .brow .st{font-size:var(--fs-xs);font-weight:var(--w-semi);margin-top:3px;color:var(--ink-3);white-space:nowrap}

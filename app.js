@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -743,6 +743,11 @@ function rowHTML(b) {
 /* =============================================================
    Seite: Übersicht
    ============================================================= */
+function sharePct(v, total) {
+  if (!total) return '0 %';
+  const p = v / total * 100;
+  return p > 0 && p < 1 ? '< 1 %' : Math.round(p) + ' %';
+}
 function renderOverview() {
   const all = [...BL.values()].filter(b => b.status !== 'warten');
   const v = $('#view');
@@ -771,7 +776,7 @@ function renderOverview() {
     <section class="card"><div class="lhead"><h2>Nach Kategorie</h2></div>
       ${shown.map(r => `<button class="cbar" data-f="${r.c ? 'c:' + esc(r.c.id) : 'ohne'}">
         <div class="l"><i style="background:${catColor(r.c)}"></i><span class="n">${esc(r.c ? r.c.name : 'Ohne Kategorie')}</span>
-        <span class="v">${eur0(r.v)}</span><span class="p">${total ? Math.round(r.v / total * 100) : 0} %</span></div>
+        <span class="v">${eur0(r.v)}</span><span class="p">${sharePct(r.v, total)}</span></div>
         <div class="track"><div class="fill" style="width:${Math.max(0, r.v) / max * 100}%;background:${catColor(r.c)}"></div></div></button>`).join('')}
     </section>
     ${openSorted.length ? `<section class="card"><div class="lhead"><h2>Offen <small>${eur(sum(openSorted.map(betrag)))}</small></h2></div>
