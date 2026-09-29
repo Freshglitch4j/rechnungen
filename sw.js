@@ -1,6 +1,6 @@
 /* Service Worker – macht die App offline nutzbar.
    Bei jeder neuen App-Version CACHE hochzählen (und APP_VERSION in app.js). */
-const CACHE = 'rechnungen-1.0.0';
+const CACHE = 'rechnungen-1.0.1';
 const FILES = ['./', './index.html', './boot.js', './app.css', './app.js', './inter.woff2', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-180.png',
   './lib/pdfjs/pdf.min.js', './lib/pdfjs/pdf.worker.min.js', './lib/pdfjs/wasm/jbig2.wasm', './lib/pdfjs/wasm/openjpeg.wasm'];

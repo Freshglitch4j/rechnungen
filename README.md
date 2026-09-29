@@ -15,10 +15,13 @@ Läuft über GitHub Pages aus `main`: https://freshglitch4j.github.io/rechnungen
 
 ## Einrichtung
 
-1. In der [Anthropic Console](https://console.anthropic.com) einen eigenen
-   API-Schlüssel nur für diese App anlegen und am besten ein Ausgabenlimit
-   setzen.
-2. In der App unter *Einstellungen → API-Schlüssel* eintragen. Der Schlüssel
+1. In der [Claude Console](https://platform.claude.com) unter
+   *Settings → Workspaces* einen eigenen Workspace „Rechnungen“ anlegen und
+   dort unter *Spend limits* ein monatliches Ausgabenlimit setzen.
+2. Unter *Settings → API keys* einen persönlichen Schlüssel nur für diesen
+   Workspace anlegen. **Wichtig:** Der Schlüssel muss genau einem Workspace
+   zugeordnet sein – die App sendet keinen `anthropic-workspace-id`-Header.
+3. In der App unter *Einstellungen → API-Schlüssel* eintragen. Der Schlüssel
    wird nur im `localStorage` dieses Geräts gespeichert, steht nie im Code
    und ist auch in Sicherungsdateien nicht enthalten.
 

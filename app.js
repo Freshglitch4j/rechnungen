@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -357,6 +357,7 @@ function apiHeaders(key) {
 function apiError(status, msg) {
   if (status === 401) return 'API-Schlüssel ungültig';
   if (status === 403) return 'Kein Zugriff mit diesem API-Schlüssel';
+  if (/anthropic-workspace-id/i.test(msg)) return 'Schlüssel ist keinem Workspace zugeordnet – neuen Schlüssel für einen Workspace anlegen';
   if (/credit balance/i.test(msg)) return 'Guthaben in der Anthropic Console aufgebraucht';
   if (status === 413) return 'Beleg zu groß';
   if (status === 429) return 'Zu viele Anfragen – bitte kurz warten';
@@ -1259,7 +1260,7 @@ function keySheet() {
     try { localStorage.setItem(API_KEY_KEY, k); } catch (e) { toast('Speichern fehlgeschlagen'); return; }
     closeSheet();
     const ok = await testKey(k);
-    toast(ok === true ? 'Schlüssel gespeichert und geprüft' : ok === false ? 'Schlüssel gespeichert – aber ungültig' : 'Schlüssel gespeichert');
+    toast(ok === true ? 'Schlüssel gespeichert und geprüft' : ok === false ? 'Schlüssel gespeichert – aber ungültig' : ok === 'workspace' ? KEY_WS : 'Schlüssel gespeichert');
     if (ui.view === 'einstellungen') renderSettings(); else route();
     processQueue(true);
   };
@@ -1268,7 +1269,7 @@ function keySheet() {
     t.disabled = true; t.innerHTML = '<span class="spin"></span>';
     const ok = await testKey(apiKey());
     t.disabled = false; t.textContent = 'Testen';
-    toast(ok === true ? 'Schlüssel funktioniert' : ok === false ? 'Schlüssel ungültig' : 'Keine Verbindung');
+    toast(ok === true ? 'Schlüssel funktioniert' : ok === false ? 'Schlüssel ungültig' : ok === 'workspace' ? KEY_WS : 'Keine Verbindung');
   };
   const d = $('#kdel', sh);
   if (d) d.onclick = () => {
@@ -1279,16 +1280,23 @@ function keySheet() {
   };
   setTimeout(() => input.focus(), 250);
 }
-/* Prüft den Schlüssel kostenlos über die Modellliste. true / false / null (keine Verbindung) */
+/* Prüft den Schlüssel kostenlos über die Modellliste.
+   true / false / 'workspace' (keinem Workspace zugeordnet) / null (keine Verbindung) */
 async function testKey(k) {
   try {
     const h = apiHeaders(k); delete h['content-type'];
     const r = await fetch('https://api.anthropic.com/v1/models/' + encodeURIComponent(S.model), { headers: h });
     if (r.ok) return true;
     if (r.status === 401 || r.status === 403) return false;
+    if (r.status === 400) {
+      let j = null;
+      try { j = await r.json(); } catch (e) { }
+      if (/anthropic-workspace-id/i.test((j && j.error && j.error.message) || '')) return 'workspace';
+    }
     return null;
   } catch (e) { return null; }
 }
+const KEY_WS = 'Schlüssel ist keinem Workspace zugeordnet';
 function modelSheet() {
   const sh = openSheet(`<h3>Modell</h3>
     ${MODELS.map(m => `<button class="opt${m.id === S.model ? ' on' : ''}" data-m="${m.id}"><span class="grow"><b>${esc(m.name)}</b><span>${esc(m.hint)}</span></span><span class="radio"></span></button>`).join('')}`);
