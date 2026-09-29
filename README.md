@@ -176,9 +176,13 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
   Format `RF…` (ISO 11649) kommt ins strukturierte Feld, alles andere als
   Verwendungszweck; ohne Angabe „Rechnung <Nr.>“. Geprüft wird im Test mit
   einem unabhängigen QR-Decoder (jsQR).
-- **George öffnen.** Läuft über eine Android-Intent-Adresse mit dem Paket
-  `at.erstebank.george`. Ist die App nicht installiert, öffnet Chrome den
-  Play Store.
+- **George öffnen.** Chrome startet aus Webseiten nur Apps, die dafür einen
+  Einsprung (BROWSABLE) anbieten; der normale Startbildschirm von George
+  gehört nicht dazu, einen dokumentierten Deep Link gibt es nicht. Die
+  Intent-Adresse mit `package=at.erstebank.george` landet deshalb im Play
+  Store, dort öffnet „Öffnen“ die App. Zusätzlich gibt es „Teilen“ (Web
+  Share mit der PNG-Datei), damit das QR-Bild direkt an George übergeben
+  werden kann, falls George im Teilen-Menü erscheint.
 - **Farbe der Statusleiste.** Installiert unter Android gilt nur
   `theme_color` aus dem Manifest (eine Farbe für beide Modi), im Browsertab
   die beiden `<meta name="theme-color">`.

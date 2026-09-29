@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -70,6 +70,7 @@ const ICON = {
   up: '<svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   euro: '<svg viewBox="0 0 24 24"><path d="M18 6.5A7 7 0 1 0 18 17.5"/><line x1="4" y1="10" x2="13" y2="10"/><line x1="4" y1="14" x2="13" y2="14"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>',
   bank: '<svg viewBox="0 0 24 24"><polyline points="3 10 12 4 21 10"/><line x1="5" y1="10" x2="5" y2="18"/><line x1="10" y1="10" x2="10" y2="18"/><line x1="14" y1="10" x2="14" y2="18"/><line x1="19" y1="10" x2="19" y2="18"/><line x1="3" y1="21" x2="21" y2="21"/></svg>'
 };
 
@@ -1391,11 +1392,18 @@ async function paySheet() {
   const sk = skontoInfo(w);
   let useSk = !!sk.active;
   const warn = otherIbans(w);
+  // Teilen-Menü (Web Share mit Datei) – darüber lässt sich das Bild direkt an George übergeben, falls George es anbietet
+  let canShare = false;
+  try { canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([new Blob(['x'])], 'x.png', { type: 'image/png' })] })); } catch (e) { }
   const draw = () => {
     const amount = useSk ? sk.amount : full;
     const name = w.empfaenger || w.lieferant;
     const ref = w.referenz || (w.nr ? 'Rechnung ' + w.nr : '');
     const canvas = qrCanvas(epcPayload(w, amount), name, eur(amount));
+    const slug = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'zahlung';
+    const fname = 'zahlung-' + slug + '-' + amount.toFixed(2).replace('.', '-') + '.png';
+    let png = null;
+    canvas.toBlob(b => { png = b; }, 'image/png');
     const sh = openSheet(`<h3>Bezahlen</h3>
       ${warn.length ? `<div class="notice err"><b>Andere IBAN als bisher</b>Vor dem Bezahlen beim Lieferanten telefonisch nachfragen.</div>` : ''}
       ${sk.active ? `<div class="seg" id="skseg"><button data-s="1" class="${useSk ? 'on' : ''}">Mit Skonto</button><button data-s="0" class="${useSk ? '' : 'on'}">Ohne Skonto</button></div>` : ''}
@@ -1408,16 +1416,22 @@ async function paySheet() {
       </div>
       <div class="sheet-actions">
         <button class="btn block" id="qrsave">${ICON.save}QR-Code speichern</button>
+        ${canShare ? `<button class="btn ghost block" id="qrshare">${ICON.share}Teilen</button>` : ''}
         <button class="btn ghost block" id="george">${ICON.bank}George öffnen</button>
         <button class="btn ghost block" id="markpaid">${ICON.ok}Als bezahlt markieren</button>
       </div>`);
     $$('#skseg button', sh).forEach(b => b.onclick = () => { useSk = b.dataset.s === '1'; draw(); });
     $$('[data-copy]', sh).forEach(b => b.onclick = () => copyText(b.dataset.copy, b.dataset.what));
     $('#qrsave', sh).onclick = () => canvas.toBlob(blob => {
-      const slug = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'zahlung';
-      download('zahlung-' + slug + '-' + amount.toFixed(2).replace('.', '-') + '.png', blob);
+      download(fname, blob);
       toast('Gespeichert – in George: QR-Code scannen, aus Ordner');
     }, 'image/png');
+    const shareBtn = $('#qrshare', sh);
+    if (shareBtn) shareBtn.onclick = async () => {
+      if (!png) return;
+      try { await navigator.share({ files: [new File([png], fname, { type: 'image/png' })] }); }
+      catch (e) { if (e.name !== 'AbortError') toast('Teilen nicht möglich'); }
+    };
     $('#george', sh).onclick = () => { location.href = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=at.erstebank.george;end'; };
     $('#markpaid', sh).onclick = () => {
       w.bezahlt = true; w.bezahltAm = today(); w.gezahlt = amount;
