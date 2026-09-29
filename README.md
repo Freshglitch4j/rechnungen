@@ -37,6 +37,13 @@ Läuft über GitHub Pages aus `main`: https://freshglitch4j.github.io/rechnungen
 - **Prüfen** – alle Felder editierbar, Plausibilitätsprüfung
   (Netto + USt = Brutto und USt passend zum Satz), Warnung bei Duplikaten
   (gleiche Rechnungsnummer und gleicher Lieferant), Vollbild mit Zoomen
+- **Bezahlen** – Empfänger, IBAN, BIC, Zahlungsreferenz und Skonto werden
+  mit ausgelesen. „Bezahlen“ erzeugt einen „Zahlen mit Code“-QR-Code
+  (EPC-QR), der als Bild gespeichert und in George unter *QR-Code scannen →
+  aus Ordner* eingelesen wird; dazu Kopier-Knöpfe und „George öffnen“. Mit
+  Skonto bis zur Frist automatisch der niedrigere Betrag. IBAN mit
+  Prüfziffernkontrolle und Warnung, wenn ein Lieferant plötzlich eine andere
+  IBAN verwendet als früher.
 - **Offline** – ohne Internet erfasste Belege werden gespeichert und
   automatisch ausgelesen, sobald wieder eine Verbindung besteht
 - **Belege** – Liste nach Monaten mit Suche (auch in Positionen und Beträgen)
@@ -77,6 +84,7 @@ Repository sind genau das, was ausgeliefert wird.
 | `manifest.webmanifest` | Installierbarkeit, Icons, Farben |
 | `inter.woff2` | Schrift, lokal eingebunden |
 | `lib/pdfjs/` | pdf.js 6.3.289 (Legacy-Build, Apache 2.0) für die PDF-Vorschau |
+| `lib/qrcode.js` | qrcode-generator 2.0.4 (MIT) für den Bezahl-QR-Code, wird erst beim Bezahlen geladen |
 | `icon-*.png` | App-Icons inklusive maskable und Apple-Touch |
 
 Hash-Router:
@@ -98,8 +106,9 @@ IndexedDB `rechnungen`, zwei Speicher:
 belege:  { id, created, updated, status: "warten"|"pruefen"|"ok", art: "foto"|"pdf",
            dateien: [dateiId], thumb /* kleines JPEG als data-URL */,
            lieferant, land, nr, datum, faellig, kategorie /* Kategorie-ID */,
-           bezahlt, waehrung, steuer: [{ satz, netto, ust }], netto, ust, brutto,
-           zahlbetrag, positionen: [{ text, menge, betrag }], notiz,
+           bezahlt, bezahltAm, gezahlt, waehrung, steuer: [{ satz, netto, ust }], netto, ust, brutto,
+           zahlbetrag, empfaenger, iban, bic, referenz, skontoProz, skontoBis, skontoBetrag,
+           positionen: [{ text, menge, betrag }], notiz,
            unsicher: [feld], modell, ausgelesen, fehler, netzfehler, kosten }
 dateien: { id, beleg, idx, type, name, blob }   // Fotos als JPEG, PDFs im Original
 ```
@@ -109,8 +118,12 @@ dateien: { id, beleg, idx, type, name, blob }   // Fotos als JPEG, PDFs im Origi
 - `rechnungen.v1` – Einstellungen `{ theme, model, cats: [{ id, name, hint, c }], lastBackup, cost }`
 - `rechnungen.key` – API-Schlüssel (nur auf dem Gerät)
 
+Die Zahlungsfelder kamen mit Version 1.1 dazu; ältere Datensätze bekommen sie
+beim Laden über `fillDefaults()`.
+
 Status: `warten` = noch nicht ausgelesen, `pruefen` = ausgelesen, aber noch
-nicht bestätigt, `ok` = geprüft und gespeichert. Summen verwenden den
+nicht bestätigt, `ok` = geprüft und gespeichert. Summen verwenden bei
+bezahlten Belegen den gezahlten Betrag (z. B. mit Skonto), sonst den
 Zahlbetrag, sonst Brutto – so zählen Abschlagsrechnungen, die in der
 Schlussrechnung abgezogen werden, nicht doppelt.
 
@@ -158,13 +171,22 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
 - **Formular-Ereignisse.** Die Eingaben auf der Beleg-Seite werden einmalig
   am `#view` registriert (`onFormInput` usw.), nicht bei jedem Rendern –
   sonst vervielfachen sie sich.
+- **Bezahl-QR-Code.** Aufbau nach EPC069-12, Version `002` (BIC optional),
+  Zeichensatz UTF-8, Betrag mit Punkt (`EUR1455.00`). Eine Referenz im
+  Format `RF…` (ISO 11649) kommt ins strukturierte Feld, alles andere als
+  Verwendungszweck; ohne Angabe „Rechnung <Nr.>“. Geprüft wird im Test mit
+  einem unabhängigen QR-Decoder (jsQR).
+- **George öffnen.** Läuft über eine Android-Intent-Adresse mit dem Paket
+  `at.erstebank.george`. Ist die App nicht installiert, öffnet Chrome den
+  Play Store.
 - **Farbe der Statusleiste.** Installiert unter Android gilt nur
   `theme_color` aus dem Manifest (eine Farbe für beide Modi), im Browsertab
   die beiden `<meta name="theme-color">`.
 
 ## Ideen für später
 
-Skonto-Frist als eigenes Feld mit Erinnerung · Zuordnung zu Gewerken bzw.
+Erinnerung vor Ablauf der Skontofrist · Kontoauszug (CSV) importieren und
+Zahlungen automatisch zuordnen · Zuordnung zu Gewerken bzw.
 Auftragnehmern mit Auftragssumme und Restbetrag · Budget je Kategorie ·
 mehrere Belege auf einmal importieren · Teilen direkt aus der
 E-Mail-App (Share Target)

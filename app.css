@@ -297,3 +297,19 @@ body.no-tabs .toast{bottom:calc(var(--safe-b) + 88px)}
 .lhead{padding:16px 16px 6px}
 .lhead h2{margin:0!important}
 .lhead + .lrow,.lhead + .cbar{border-top:0}
+
+/* ---------- Zahlung ---------- */
+.ferr{font-size:var(--fs-xs);font-weight:var(--w-semi);color:var(--neg);margin-top:6px}
+.iban{font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.sheet .seg{margin-bottom:12px}
+.qrbox{background:#fff;border-radius:var(--r-md);padding:10px;margin:0 auto 12px;max-width:250px;box-shadow:inset 0 0 0 1px var(--line)}
+.qrbox img{display:block;width:100%;height:auto}
+.plines{margin-bottom:8px}
+.pl{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.pl:first-child{border-top:0}
+.pl .k{font-size:var(--fs-xs);font-weight:var(--w-semi);color:var(--ink-2);text-transform:uppercase;letter-spacing:.5px;width:84px;flex:none}
+.pl .v{flex:1;min-width:0;font-size:var(--fs-md);font-weight:var(--w-med);overflow-wrap:anywhere}
+.pl .v small{display:block;font-size:var(--fs-xs);font-weight:var(--w-semi);color:var(--warn);margin-top:2px}
+.pl button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--accent);flex:none}
+.pl button:active{background:var(--press)}
+.pl button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}

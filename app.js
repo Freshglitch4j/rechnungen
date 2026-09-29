@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -67,7 +67,10 @@ const ICON = {
   redo: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.6"/><polyline points="20 3 20 9 14 9"/><path d="M20 12a8 8 0 0 1-13.7 5.7L4 15.4"/><polyline points="4 21 4 15 10 15"/></svg>',
   ok: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9.5"/></svg>',
   warn: '<svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17.5" x2="12" y2="17.6"/></svg>',
-  up: '<svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg>'
+  up: '<svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
+  euro: '<svg viewBox="0 0 24 24"><path d="M18 6.5A7 7 0 1 0 18 17.5"/><line x1="4" y1="10" x2="13" y2="10"/><line x1="4" y1="14" x2="13" y2="14"/></svg>',
+  bank: '<svg viewBox="0 0 24 24"><polyline points="3 10 12 4 21 10"/><line x1="5" y1="10" x2="5" y2="18"/><line x1="10" y1="10" x2="10" y2="18"/><line x1="14" y1="10" x2="14" y2="18"/><line x1="19" y1="10" x2="19" y2="18"/><line x1="3" y1="21" x2="21" y2="21"/></svg>'
 };
 
 /* ---------------- Hilfsfunktionen ---------------- */
@@ -197,20 +200,55 @@ async function filesOf(b) {
   const fs = await Promise.all((b.dateien || []).map(id => dbGet('dateien', id)));
   return fs.filter(Boolean).sort((a, c) => a.idx - c.idx);
 }
+/* Felder für Zahlung und Skonto (ab Version 1.1) – ältere Datensätze bekommen sie beim Laden */
+const PAY_DEFAULTS = { empfaenger: '', iban: '', bic: '', referenz: '', skontoProz: null, skontoBis: '', skontoBetrag: null, bezahltAm: '', gezahlt: null };
+function fillDefaults(b) { for (const k in PAY_DEFAULTS) if (b[k] === undefined) b[k] = PAY_DEFAULTS[k]; return b; }
 function blankBeleg(art) {
   const now = new Date().toISOString();
   return {
     id: uid(), created: now, updated: now, status: 'warten', art, dateien: [], thumb: null,
     lieferant: '', land: '', nr: '', datum: '', faellig: '', kategorie: null, bezahlt: false, waehrung: 'EUR',
     steuer: [], netto: null, ust: null, brutto: null, zahlbetrag: null, positionen: [], notiz: '',
+    ...PAY_DEFAULTS,
     unsicher: [], modell: null, ausgelesen: null, fehler: null, netzfehler: false, kosten: 0
   };
 }
-/* Betrag für Summen: der tatsächlich zu zahlende Betrag, sonst Brutto */
-const betrag = b => isNum(b.zahlbetrag) ? b.zahlbetrag : isNum(b.brutto) ? b.brutto : 0;
+/* Betrag für Summen: bei bezahlten Belegen der gezahlte Betrag (z. B. mit Skonto),
+   sonst der zu zahlende Betrag, sonst Brutto */
+const offenBetrag = b => isNum(b.zahlbetrag) ? b.zahlbetrag : isNum(b.brutto) ? b.brutto : 0;
+const betrag = b => b.bezahlt && isNum(b.gezahlt) ? b.gezahlt : offenBetrag(b);
 const istOffen = b => b.status !== 'warten' && !b.bezahlt;
 const istUeberfaellig = b => istOffen(b) && b.faellig && b.faellig < today();
 const tagOf = b => b.datum || b.created.slice(0, 10);
+
+/* ---------------- IBAN & Skonto ---------------- */
+const IBAN_LEN = { AT: 20, DE: 22, IT: 27, CH: 21, LI: 21, SI: 19, CZ: 24, SK: 24, HU: 28, PL: 28, NL: 18, FR: 27, BE: 16, LU: 20, ES: 24, HR: 21 };
+const normIban = s => String(s || '').replace(/[\s-]/g, '').toUpperCase();
+const fmtIban = s => normIban(s).replace(/(.{4})/g, '$1 ').trim();
+function ibanOk(s) {
+  const x = normIban(s);
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(x)) return false;
+  if (IBAN_LEN[x.slice(0, 2)] && IBAN_LEN[x.slice(0, 2)] !== x.length) return false;
+  let m = 0;
+  for (const ch of x.slice(4) + x.slice(0, 4)) {
+    const v = ch >= 'A' ? String(ch.charCodeAt(0) - 55) : ch;
+    for (const d of v) m = (m * 10 + +d) % 97;
+  }
+  return m === 1;
+}
+/* Frühere IBANs desselben Lieferanten, die von dieser abweichen (Schutz vor gefälschten Rechnungen) */
+function otherIbans(w) {
+  const iban = normIban(w.iban), lf = normName(w.lieferant);
+  if (!iban || !lf) return [];
+  return [...new Set([...BL.values()].filter(o => o.id !== w.id && o.iban && sameName(lf, normName(o.lieferant)))
+    .map(o => normIban(o.iban)).filter(x => x !== iban))];
+}
+function skontoInfo(b) {
+  const full = offenBetrag(b);
+  if (!isNum(b.skontoProz) || b.skontoProz <= 0 || !(full > 0)) return { active: false };
+  const amount = isNum(b.skontoBetrag) ? b.skontoBetrag : round2(full * (1 - b.skontoProz / 100));
+  return { active: !b.skontoBis || b.skontoBis >= today(), amount, bis: b.skontoBis, saving: round2(full - amount), full };
+}
 
 /* ---------------- Bilder & PDF ---------------- */
 /* Bildgröße passend zur Bildauflösung von Claude: höchstens 2576 px lange Kante
@@ -298,10 +336,15 @@ Regeln:
 - bezahlt: true nur, wenn der Beleg eindeutig zeigt, dass schon bezahlt wurde (Kassenbon, Barzahlung, Kartenzahlung, „bezahlt“, „Betrag erhalten“). Sonst false.
 - kategorie: die passendste Kategorie aus der Liste; passt keine, null.
 - positionen: jede Rechnungsposition mit Bezeichnung (kurz, wie gedruckt), Menge mit Einheit wie gedruckt und Gesamtbetrag der Zeile. Keine Zwischensummen, Steuerzeilen oder Überträge.
-- hinweis: kurzer deutscher Hinweis auf Wichtiges, sonst null: Skonto (Prozent und Frist), Haftrücklass, abgezogene Anzahlungen, Abschlags- oder Schlussrechnung, Reverse Charge, andere Währung als Euro, fehlende oder abgeschnittene Seiten, Rechenfehler auf dem Beleg.
+- empfaenger: Kontoinhaber laut Bankverbindung des Ausstellers; steht keiner dabei, null.
+- iban: IBAN des Ausstellers ohne Leerzeichen, Zeichen für Zeichen genau wie gedruckt. Bei mehreren Bankverbindungen die erste. Nicht die IBAN des Kunden: Wird der Betrag abgebucht (Lastschrift, Einzug), setze null und nenne das im Hinweis.
+- bic: BIC des Ausstellers, sonst null.
+- zahlungsreferenz: was laut Beleg bei der Überweisung als Zahlungsreferenz oder Verwendungszweck anzugeben ist; sonst null.
+- skonto_prozent, skonto_frist, skonto_betrag: Skonto in Prozent, letzter Tag der Skontofrist (bei „binnen N Tagen“ Rechnungsdatum plus N Tage) und der Zahlbetrag mit Skonto, falls gedruckt. Ohne Skonto jeweils null.
+- hinweis: kurzer deutscher Hinweis auf Wichtiges, sonst null: Haftrücklass, abgezogene Anzahlungen, Abschlags- oder Schlussrechnung, Reverse Charge, Abbuchung per Lastschrift, andere Währung als Euro, fehlende oder abgeschnittene Seiten, Rechenfehler auf dem Beleg. Skonto nur in den Skonto-Feldern.
 - unsicher: Namen der Felder, die schlecht lesbar, abgeschnitten, handschriftlich oder widersprüchlich sind.`;
 
-const UNSURE_FIELDS = ['lieferant', 'land', 'rechnungsnummer', 'rechnungsdatum', 'faelligkeitsdatum', 'steuer', 'netto', 'ust', 'brutto', 'zahlbetrag', 'kategorie', 'positionen'];
+const UNSURE_FIELDS = ['lieferant', 'land', 'rechnungsnummer', 'rechnungsdatum', 'faelligkeitsdatum', 'steuer', 'netto', 'ust', 'brutto', 'zahlbetrag', 'kategorie', 'positionen', 'iban', 'skonto'];
 function schema() {
   const names = [...new Set(S.cats.map(c => c.name))];
   const nstr = { type: ['string', 'null'] }, nnum = { type: ['number', 'null'] };
@@ -324,6 +367,8 @@ function schema() {
         properties: { text: { type: 'string' }, menge: nstr, betrag: nnum }
       }
     },
+    empfaenger: nstr, iban: nstr, bic: nstr, zahlungsreferenz: nstr,
+    skonto_prozent: nnum, skonto_frist: date, skonto_betrag: nnum,
     hinweis: nstr,
     unsicher: { type: 'array', items: { type: 'string', enum: UNSURE_FIELDS } }
   };
@@ -428,6 +473,15 @@ function applyExtraction(b, d) {
   const h = str(d.hinweis);
   if (h && !b.notiz.includes(h)) b.notiz = b.notiz ? b.notiz + '\n' + h : h;
   b.unsicher = arr(d.unsicher).filter(x => UNSURE_FIELDS.includes(x));
+  b.empfaenger = str(d.empfaenger);
+  b.iban = normIban(str(d.iban));
+  b.bic = str(d.bic).replace(/\s/g, '').toUpperCase();
+  b.referenz = str(d.zahlungsreferenz);
+  b.skontoProz = numOr(d.skonto_prozent);
+  b.skontoBis = validDay(d.skonto_frist);
+  b.skontoBetrag = numOr(d.skonto_betrag);
+  if (b.bezahlt && !b.bezahltAm) b.bezahltAm = b.datum;
+  if (b.iban && !ibanOk(b.iban) && !b.unsicher.includes('iban')) b.unsicher.push('iban');
 }
 
 const running = new Map(); // Beleg-ID → laufendes Auslesen
@@ -675,7 +729,7 @@ function haystack(b) {
   const c = catOf(b.kategorie);
   return [b.lieferant, b.nr, b.notiz, c && c.name, fmtDate(b.datum), b.land,
     isNum(b.brutto) ? fmtNum(b.brutto) + ' ' + String(b.brutto).replace('.', ',') : '',
-    isNum(b.zahlbetrag) ? fmtNum(b.zahlbetrag) : '',
+    isNum(b.zahlbetrag) ? fmtNum(b.zahlbetrag) : '', b.empfaenger, b.iban, b.referenz,
     ...(b.positionen || []).map(p => p.text)].join(' ').toLowerCase();
 }
 function matchFilter(b, f) {
@@ -727,6 +781,8 @@ function statusHTML(b) {
   if (b.status === 'pruefen') return '<span class="badge acc">prüfen</span>';
   if (b.bezahlt) return 'bezahlt';
   if (istUeberfaellig(b)) return '<span class="st late">überfällig</span>';
+  const sk = skontoInfo(b);
+  if (sk.active && sk.bis) return '<span class="st open">Skonto bis ' + fmtShort(sk.bis) + '</span>';
   return '<span class="st open">' + (b.faellig ? 'fällig ' + fmtShort(b.faellig) : 'offen') + '</span>';
 }
 function rowHTML(b) {
@@ -766,12 +822,19 @@ function renderOverview() {
   const max = Math.max(...shown.map(r => Math.abs(r.v)), 1);
   const months = new Map();
   all.forEach(b => { const k = tagOf(b).slice(0, 7); months.set(k, (months.get(k) || 0) + betrag(b)); });
-  const openSorted = offen.slice().sort((a, c) => (a.faellig || '9999').localeCompare(c.faellig || '9999'));
+  const dueOf = b => { const sk = skontoInfo(b); return (sk.active && sk.bis) || b.faellig || '9999'; };
+  const openSorted = offen.slice().sort((a, c) => dueOf(a).localeCompare(dueOf(c)));
+  const dueText = b => {
+    const sk = skontoInfo(b);
+    if (istUeberfaellig(b)) return '<span class="late">überfällig seit ' + fmtDate(b.faellig) + '</span>';
+    if (sk.active && sk.bis) return '<span>Skonto bis ' + fmtDate(sk.bis) + ' · spart ' + eur(sk.saving) + '</span>';
+    return '<span>' + (b.faellig ? 'fällig ' + fmtDate(b.faellig) : 'ohne Fälligkeit') + '</span>';
+  };
   v.innerHTML = `
     <div class="titlebar"><h1 class="left">Übersicht</h1></div>
     <section class="hero"><small>Summe aller Belege</small><div class="hero-total">${eur0(total)}</div>
       <div class="pills"><span class="pill">${all.length} ${all.length === 1 ? 'Beleg' : 'Belege'}</span>
-      ${offen.length ? `<span class="pill">Offen ${eur0(sum(offen.map(betrag)))}</span>` : ''}
+      ${offen.length ? `<span class="pill">Offen ${eur0(sum(offen.map(offenBetrag)))}</span>` : ''}
       ${late.length ? `<span class="pill">${late.length} überfällig</span>` : ''}</div></section>
     <section class="card"><div class="lhead"><h2>Nach Kategorie</h2></div>
       ${shown.map(r => `<button class="cbar" data-f="${r.c ? 'c:' + esc(r.c.id) : 'ohne'}">
@@ -779,9 +842,9 @@ function renderOverview() {
         <span class="v">${eur0(r.v)}</span><span class="p">${sharePct(r.v, total)}</span></div>
         <div class="track"><div class="fill" style="width:${Math.max(0, r.v) / max * 100}%;background:${catColor(r.c)}"></div></div></button>`).join('')}
     </section>
-    ${openSorted.length ? `<section class="card"><div class="lhead"><h2>Offen <small>${eur(sum(openSorted.map(betrag)))}</small></h2></div>
+    ${openSorted.length ? `<section class="card"><div class="lhead"><h2>Offen <small>${eur(sum(openSorted.map(offenBetrag)))}</small></h2></div>
       ${openSorted.map(b => `<a class="lrow" href="#/beleg/${esc(b.id)}"><span class="grow"><b>${esc(b.lieferant || 'Ohne Lieferant')}</b>
-        <span class="${istUeberfaellig(b) ? 'late' : ''}">${b.faellig ? (istUeberfaellig(b) ? 'überfällig seit ' : 'fällig ') + fmtDate(b.faellig) : 'ohne Fälligkeit'}</span></span>
+        ${dueText(b)}</span>
         <span class="v">${eur(betrag(b))}</span></a>`).join('')}</section>` : ''}
     <section class="card"><div class="lhead"><h2>Nach Monat</h2></div>
       ${[...months].sort((a, c) => c[0].localeCompare(a[0])).map(([k, val]) => `<div class="lrow"><span class="grow"><b>${esc(monthLabel(k))}</b></span><span class="v">${eur(val)}</span></div>`).join('')}
@@ -1030,6 +1093,10 @@ function formHTML(w) {
       <div class="f"><label for="f-kat">Kategorie</label><select id="f-kat" data-k="kategorie" class="${un('kategorie')}">${catOpts}</select></div>
       <div class="f"><span class="flabel">Status</span><div class="seg" id="paid">
         <button data-v="0" class="${w.bezahlt ? '' : 'on'}">Offen</button><button data-v="1" class="${w.bezahlt ? 'on' : ''}">Bezahlt</button></div></div>
+      <div class="grid2" id="paidx" ${w.bezahlt ? '' : 'hidden'}>
+        <div class="f"><label for="f-bam">Bezahlt am</label><input id="f-bam" type="date" data-k="bezahltAm" value="${esc(w.bezahltAm)}"></div>
+        <div class="f"><label for="f-gez">Gezahlt</label><input id="f-gez" data-k="gezahlt" data-money class="num" inputmode="decimal" value="${fmtIn(w.gezahlt)}" placeholder="${fmtIn(offenBetrag(w))}"></div>
+      </div>
     </section>
     <section class="card">
       <div class="lhead"><h2>Beträge</h2></div>
@@ -1040,6 +1107,7 @@ function formHTML(w) {
       </div>
       <div id="check"></div>
     </section>
+    <section class="card" id="pay">${payHTML(w)}</section>
     <section class="card" id="pos">${posHTML(w)}</section>
     <section class="card form"><div class="f"><label for="f-notiz">Notiz</label><textarea id="f-notiz" data-k="notiz" rows="3">${esc(w.notiz)}</textarea></div></section>
     ${m ? `<p class="meta">Ausgelesen mit ${esc(m)} am ${fmtDate(w.ausgelesen.slice(0, 10))}${w.kosten ? ' · ≈ ' + fmtNum(w.kosten * 100, 1) + ' Cent' : ''}</p>` : ''}
@@ -1057,6 +1125,36 @@ function taxHTML(w) {
       <button class="x" data-delst="${i}" aria-label="Zeile entfernen">${ICON.close}</button></div>`).join('')}
     <button class="linkbtn" id="addst">${ICON.plus}Steuersatz</button>
     ${w.steuer.length > 1 ? `<div class="trow sum"><span style="text-align:left;padding:0">Summe</span><span id="sn">${eur(p.sn)}</span><span id="su">${eur(p.su)}</span><span></span></div>` : ''}`;
+}
+function payHTML(w) {
+  const un = f => (w.unsicher || []).includes(f) ? ' unsure' : '';
+  const hasData = w.iban || w.empfaenger || w.referenz || isNum(w.skontoProz);
+  if (w.bezahlt && !hasData && !DS.payOpen) {
+    return `<button class="ptoggle" id="paytog"><span class="grow">Zahlungsdaten</span>${ICON.go}</button>`;
+  }
+  const sk = skontoInfo(w);
+  return `<div class="form">
+    <div class="f" style="margin-top:2px"><h2 style="font-size:var(--fs-md);font-weight:var(--w-semi)">Zahlung</h2></div>
+    <div class="f"><label for="f-empf">Empfänger</label><input id="f-empf" data-k="empfaenger" value="${esc(w.empfaenger)}" placeholder="${esc(w.lieferant)}" autocomplete="off"></div>
+    <div class="f"><label for="f-iban">IBAN</label><input id="f-iban" data-k="iban" class="iban${un('iban')}" value="${esc(fmtIban(w.iban))}" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <div class="ferr" id="iban-err" ${!w.iban || ibanOk(w.iban) ? 'hidden' : ''}>IBAN ungültig – bitte mit dem Beleg vergleichen</div></div>
+    <div class="grid2">
+      <div class="f"><label for="f-bic">BIC</label><input id="f-bic" data-k="bic" value="${esc(w.bic)}" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+      <div class="f"><label for="f-ref">Zahlungsreferenz</label><input id="f-ref" data-k="referenz" value="${esc(w.referenz)}" placeholder="${w.nr ? esc('Rechnung ' + w.nr) : ''}" autocomplete="off"></div>
+      <div class="f"><label for="f-skp">Skonto %</label><input id="f-skp" data-k="skontoProz" class="num${un('skonto')}" inputmode="decimal" value="${fmtRate(w.skontoProz)}"></div>
+      <div class="f"><label for="f-skb">Skonto bis</label><input id="f-skb" type="date" data-k="skontoBis" class="${un('skonto')}" value="${esc(w.skontoBis)}"></div>
+    </div>
+    <div class="f" id="skbx" ${isNum(w.skontoProz) && w.skontoProz > 0 ? '' : 'hidden'}><label for="f-skbt">Mit Skonto zu zahlen</label>
+      <input id="f-skbt" data-k="skontoBetrag" data-money class="num${un('skonto')}" inputmode="decimal" value="${fmtIn(w.skontoBetrag)}" placeholder="${sk.amount ? fmtIn(sk.amount) : ''}"></div>
+    <div id="ibanwarn"></div>
+    <button class="btn block" id="paybtn" style="margin:4px 0 16px" ${w.bezahlt ? 'hidden' : ''}>${ICON.euro}Bezahlen</button>
+  </div>`;
+}
+function refreshIbanWarn() {
+  const el = $('#ibanwarn');
+  if (!el) return;
+  const o = otherIbans(DS.w);
+  el.innerHTML = o.length ? `<div class="notice err"><b>Andere IBAN als bisher</b>Frühere Rechnungen: ${o.map(x => esc(fmtIban(x))).join(', ')}. Vor dem Bezahlen beim Lieferanten telefonisch nachfragen.</div>` : '';
 }
 function posHTML(w) {
   const un = (w.unsicher || []).includes('positionen');
@@ -1090,12 +1188,13 @@ function refreshDups() {
   el.innerHTML = d.length ? `<div class="notice err"><b>Bereits erfasst?</b>${d.map(o => `<button class="dup" data-id="${esc(o.id)}">${esc(o.lieferant)}${o.nr ? ' · Nr. ' + esc(o.nr) : ''} · ${fmtDate(o.datum)} · ${eur(betrag(o))}</button>`).join('')}</div>` : '';
   $$('.dup', el).forEach(b => b.onclick = () => { if (DS.dirty && !confirm('Änderungen verwerfen?')) return; DS.dirty = false; nav('#/beleg/' + b.dataset.id); });
 }
-const UNSURE_OF = { lieferant: ['lieferant'], nr: ['rechnungsnummer'], land: ['land'], datum: ['rechnungsdatum'], faellig: ['faelligkeitsdatum'], kategorie: ['kategorie'], brutto: ['brutto'], zahlbetrag: ['zahlbetrag'] };
+const UNSURE_OF = { lieferant: ['lieferant'], nr: ['rechnungsnummer'], land: ['land'], datum: ['rechnungsdatum'], faellig: ['faelligkeitsdatum'], kategorie: ['kategorie'], brutto: ['brutto'], zahlbetrag: ['zahlbetrag'], iban: ['iban'], skontoProz: ['skonto'], skontoBis: ['skonto'], skontoBetrag: ['skonto'] };
 function setVal(k, raw) {
   const w = DS.w, parts = k.split('.');
   if (parts[0] === 'st') { const r = w.steuer[+parts[1]]; if (r) r[parts[2]] = parseNum(raw); }
   else if (parts[0] === 'pos') { const r = w.positionen[+parts[1]]; if (r) r[parts[2]] = parts[2] === 'betrag' ? parseNum(raw) : raw; }
-  else if (k === 'brutto' || k === 'zahlbetrag') w[k] = parseNum(raw);
+  else if (k === 'brutto' || k === 'zahlbetrag' || k === 'skontoProz' || k === 'skontoBetrag' || k === 'gezahlt') w[k] = parseNum(raw);
+  else if (k === 'iban') w.iban = normIban(raw);
   else if (k === 'kategorie') w.kategorie = raw || null;
   else w[k] = raw;
 }
@@ -1113,6 +1212,19 @@ function onFormInput(e) {
   setVal(k, el.value); markDirty(); clearUnsure(el, k);
   if (el.hasAttribute('data-money') || k.startsWith('st.')) { el.classList.toggle('neg', Number.isNaN(parseNum(el.value))); refreshCheck(); }
   if (k === 'lieferant' || k === 'nr' || k === 'datum') { clearTimeout(dupT); dupT = setTimeout(refreshDups, 300); }
+  if (k === 'iban' || k === 'lieferant') {
+    const bad = !!DS.w.iban && !ibanOk(DS.w.iban);
+    const err = $('#iban-err');
+    // Fehler erst zeigen, wenn die IBAN vollständig sein könnte
+    if (err) err.hidden = !bad || DS.w.iban.length < 15;
+    clearTimeout(onFormInput.t); onFormInput.t = setTimeout(refreshIbanWarn, 300);
+  }
+  if (k === 'skontoProz' || k === 'zahlbetrag' || k === 'brutto') {
+    const box = $('#skbx'), sk = skontoInfo(DS.w);
+    if (box) box.hidden = !(isNum(DS.w.skontoProz) && DS.w.skontoProz > 0);
+    const inp = $('#f-skbt');
+    if (inp) inp.placeholder = sk.amount ? fmtIn(sk.amount) : '';
+  }
 }
 function onFormChange(e) {
   const el = formField(e); if (!el) return;
@@ -1120,7 +1232,9 @@ function onFormChange(e) {
   if (el.tagName === 'SELECT' || el.type === 'date') refreshDups();
 }
 function onFormBlur(e) {
-  const el = formField(e); if (!el || !el.hasAttribute('data-money')) return;
+  const el = formField(e); if (!el) return;
+  if (el.dataset.k === 'iban') { el.value = fmtIban(el.value); const err = $('#iban-err'); if (err) err.hidden = !DS.w.iban || ibanOk(DS.w.iban); return; }
+  if (!el.hasAttribute('data-money')) return;
   const n = parseNum(el.value);
   if (isNum(n)) el.value = fmtIn(n);
 }
@@ -1129,7 +1243,16 @@ function bindForm(v) {
   $$('#paid button', v).forEach(b => b.onclick = () => {
     w.bezahlt = b.dataset.v === '1'; markDirty();
     $$('#paid button', v).forEach(x => x.classList.toggle('on', x === b));
+    if (w.bezahlt && !w.bezahltAm) { w.bezahltAm = today(); $('#f-bam').value = w.bezahltAm; }
+    $('#paidx').hidden = !w.bezahlt;
+    const pb = $('#paybtn'); if (pb) pb.hidden = w.bezahlt;
   });
+  const rebindPay = () => {
+    $('#pay').innerHTML = payHTML(w);
+    const t = $('#paytog'); if (t) t.onclick = () => { DS.payOpen = true; rebindPay(); };
+    const pb = $('#paybtn'); if (pb) pb.onclick = paySheet;
+    refreshIbanWarn();
+  };
   const rebindTax = () => {
     $('#tax').innerHTML = taxHTML(w);
     $('#addst').onclick = () => { w.steuer.push({ satz: null, netto: null, ust: null }); markDirty(); rebindTax(); };
@@ -1143,7 +1266,7 @@ function bindForm(v) {
     if (add) add.onclick = () => { w.positionen.push({ text: '', menge: '', betrag: null }); markDirty(); rebindPos(); const ins = $$('#pos [data-k$=".text"]'); if (ins.length) ins[ins.length - 1].focus(); };
     $$('[data-delpos]', v).forEach(b => b.onclick = () => { w.positionen.splice(+b.dataset.delpos, 1); markDirty(); rebindPos(); });
   };
-  rebindTax(); rebindPos(); refreshDups();
+  rebindTax(); rebindPos(); rebindPay(); refreshDups();
   $('#save').onclick = saveDetail;
   $('#del').onclick = deleteBeleg;
   const redo = $('#redo');
@@ -1151,13 +1274,17 @@ function bindForm(v) {
 }
 async function saveDetail() {
   const w = DS.w;
-  const bad = [w.brutto, w.zahlbetrag, ...w.steuer.flatMap(s => [s.satz, s.netto, s.ust]), ...w.positionen.map(p => p.betrag)].some(x => Number.isNaN(x));
+  const bad = [w.brutto, w.zahlbetrag, w.skontoProz, w.skontoBetrag, w.gezahlt, ...w.steuer.flatMap(s => [s.satz, s.netto, s.ust]), ...w.positionen.map(p => p.betrag)].some(x => Number.isNaN(x));
   if (bad) { toast('Bitte die rot markierten Beträge prüfen'); return; }
   w.lieferant = w.lieferant.trim(); w.nr = w.nr.trim(); w.notiz = w.notiz.trim();
   w.steuer = w.steuer.filter(s => isNum(s.netto) || isNum(s.ust));
   w.positionen = w.positionen.map(p => ({ text: p.text.trim(), menge: (p.menge || '').trim(), betrag: p.betrag })).filter(p => p.text || isNum(p.betrag));
   if (w.steuer.length) { const p = plaus(w); w.netto = p.sn; w.ust = p.su; }
   if (!isNum(w.zahlbetrag) && isNum(w.brutto)) w.zahlbetrag = w.brutto;
+  w.empfaenger = w.empfaenger.trim(); w.iban = normIban(w.iban); w.bic = w.bic.replace(/\s/g, '').toUpperCase(); w.referenz = w.referenz.trim();
+  if (!(w.skontoProz > 0)) { w.skontoProz = null; w.skontoBis = ''; w.skontoBetrag = null; }
+  if (w.bezahlt) { if (!w.bezahltAm) w.bezahltAm = today(); }
+  else { w.bezahltAm = ''; w.gezahlt = null; }
   w.status = 'ok'; w.unsicher = []; w.fehler = null; w.netzfehler = false;
   w.updated = new Date().toISOString();
   const cur = BL.get(w.id);
@@ -1190,6 +1317,112 @@ function redoSheet() {
       DS.dirty = false;
       closeSheet();
       extract(DS.id, sel);
+    };
+  };
+  draw();
+}
+
+/* ---------------- Bezahlen: „Zahlen mit Code“ (EPC-QR) für George ----------------
+   Aufbau nach EPC069-12, Version 002 (BIC optional), Zeichensatz UTF-8. */
+function epcPayload(w, amount) {
+  const clean = (t, n) => String(t || '').replace(/[\r\n]+/g, ' ').trim().slice(0, n);
+  const ref = clean(w.referenz, 140).replace(/\s/g, '').toUpperCase();
+  const rf = /^RF\d{2}[A-Z0-9]{1,21}$/.test(ref); // strukturierte Referenz nach ISO 11649
+  const text = rf ? '' : clean(w.referenz || (w.nr ? 'Rechnung ' + w.nr : ''), 140);
+  const f = ['BCD', '002', '1', 'SCT', clean(w.bic, 11).replace(/\s/g, '').toUpperCase(), clean(w.empfaenger || w.lieferant, 70),
+    normIban(w.iban), 'EUR' + amount.toFixed(2), '', rf ? ref : '', text];
+  while (f[f.length - 1] === '') f.pop();
+  return f.join('\n');
+}
+let qrLoad = null;
+function loadQR() {
+  if (window.qrcode) return Promise.resolve();
+  if (!qrLoad) qrLoad = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'lib/qrcode.js';
+    sc.onload = res;
+    sc.onerror = () => { qrLoad = null; rej(new Error('qr')); };
+    document.head.appendChild(sc);
+  });
+  return qrLoad;
+}
+/* QR-Code als Bild; darunter Empfänger und Betrag, damit man das Bild im Ordner wiedererkennt */
+function qrCanvas(payload, line1, line2) {
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+  const qr = qrcode(0, 'M');
+  qr.addData(payload, 'Byte');
+  qr.make();
+  const n = qr.getModuleCount(), cell = 10, margin = 4 * cell, size = n * cell + 2 * margin, capH = 84;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size + capH;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = '#000';
+  for (let r = 0; r < n; r++) for (let q = 0; q < n; q++) if (qr.isDark(r, q)) x.fillRect(margin + q * cell, margin + r * cell, cell, cell);
+  x.textAlign = 'center'; x.fillStyle = '#0F172A';
+  x.font = '600 24px Inter, sans-serif';
+  x.fillText(line1.length > 34 ? line1.slice(0, 33) + '…' : line1, size / 2, size + 22);
+  x.font = '700 30px Inter, sans-serif';
+  x.fillText(line2, size / 2, size + 62);
+  return c;
+}
+async function copyText(t, what) {
+  try { await navigator.clipboard.writeText(t); toast(what + ' kopiert'); }
+  catch (e) { toast('Kopieren nicht möglich'); }
+}
+/* Sheet schließen und erst nach dem Zurück-Schritt weitermachen */
+function closeSheetThen(fn) {
+  if (!sheetOpen) { fn(); return; }
+  removeSheet();
+  let done = false;
+  const go2 = () => { if (!done) { done = true; setTimeout(fn, 0); } };
+  window.addEventListener('popstate', go2, { once: true });
+  setTimeout(go2, 600);
+  history.back();
+}
+async function paySheet() {
+  const w = DS.w;
+  if (!ibanOk(w.iban)) { toast(w.iban ? 'IBAN ungültig – bitte prüfen' : 'IBAN fehlt'); const i = $('#f-iban'); if (i) i.focus(); return; }
+  if (w.waehrung && w.waehrung !== 'EUR') { toast('Nur Zahlungen in Euro möglich'); return; }
+  if (!(w.empfaenger || w.lieferant).trim()) { toast('Empfänger fehlt'); return; }
+  const full = offenBetrag(w);
+  if (!(full > 0)) { toast('Kein Betrag zu zahlen'); return; }
+  try { await loadQR(); } catch (e) { toast('QR-Code nicht verfügbar'); return; }
+  const sk = skontoInfo(w);
+  let useSk = !!sk.active;
+  const warn = otherIbans(w);
+  const draw = () => {
+    const amount = useSk ? sk.amount : full;
+    const name = w.empfaenger || w.lieferant;
+    const ref = w.referenz || (w.nr ? 'Rechnung ' + w.nr : '');
+    const canvas = qrCanvas(epcPayload(w, amount), name, eur(amount));
+    const sh = openSheet(`<h3>Bezahlen</h3>
+      ${warn.length ? `<div class="notice err"><b>Andere IBAN als bisher</b>Vor dem Bezahlen beim Lieferanten telefonisch nachfragen.</div>` : ''}
+      ${sk.active ? `<div class="seg" id="skseg"><button data-s="1" class="${useSk ? 'on' : ''}">Mit Skonto</button><button data-s="0" class="${useSk ? '' : 'on'}">Ohne Skonto</button></div>` : ''}
+      <div class="qrbox"><img src="${canvas.toDataURL('image/png')}" alt="QR-Code zum Bezahlen"></div>
+      <div class="plines">
+        <div class="pl"><span class="k">Betrag</span><span class="v">${eur(amount)}${useSk && sk.bis ? `<small>Skonto bis ${fmtDate(sk.bis)} · spart ${eur(sk.saving)}</small>` : ''}</span><button data-copy="${amount.toFixed(2).replace('.', ',')}" data-what="Betrag" aria-label="Betrag kopieren">${ICON.copy}</button></div>
+        <div class="pl"><span class="k">Empfänger</span><span class="v">${esc(name)}</span><button data-copy="${esc(name)}" data-what="Empfänger" aria-label="Empfänger kopieren">${ICON.copy}</button></div>
+        <div class="pl"><span class="k">IBAN</span><span class="v iban">${esc(fmtIban(w.iban))}</span><button data-copy="${esc(normIban(w.iban))}" data-what="IBAN" aria-label="IBAN kopieren">${ICON.copy}</button></div>
+        ${ref ? `<div class="pl"><span class="k">Referenz</span><span class="v">${esc(ref)}</span><button data-copy="${esc(ref)}" data-what="Referenz" aria-label="Referenz kopieren">${ICON.copy}</button></div>` : ''}
+      </div>
+      <div class="sheet-actions">
+        <button class="btn block" id="qrsave">${ICON.save}QR-Code speichern</button>
+        <button class="btn ghost block" id="george">${ICON.bank}George öffnen</button>
+        <button class="btn ghost block" id="markpaid">${ICON.ok}Als bezahlt markieren</button>
+      </div>`);
+    $$('#skseg button', sh).forEach(b => b.onclick = () => { useSk = b.dataset.s === '1'; draw(); });
+    $$('[data-copy]', sh).forEach(b => b.onclick = () => copyText(b.dataset.copy, b.dataset.what));
+    $('#qrsave', sh).onclick = () => canvas.toBlob(blob => {
+      const slug = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'zahlung';
+      download('zahlung-' + slug + '-' + amount.toFixed(2).replace('.', '-') + '.png', blob);
+      toast('Gespeichert – in George: QR-Code scannen, aus Ordner');
+    }, 'image/png');
+    $('#george', sh).onclick = () => { location.href = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=at.erstebank.george;end'; };
+    $('#markpaid', sh).onclick = () => {
+      w.bezahlt = true; w.bezahltAm = today(); w.gezahlt = amount;
+      markDirty();
+      closeSheetThen(saveDetail);
     };
   };
   draw();
@@ -1376,6 +1609,7 @@ function csvFile(name, lines) {
 function exportBelege(list) {
   const rates = [...new Set(list.flatMap(b => b.steuer.map(s => s.satz)).filter(isNum))].sort((a, c) => c - a);
   const head = ['Datum', 'Lieferant', 'Land', 'Rechnungsnummer', 'Kategorie', 'Netto', 'USt', 'Brutto', 'Zu zahlen', 'Fällig am', 'Status', 'Geprüft', 'Notiz',
+    'Empfänger', 'IBAN', 'Zahlungsreferenz', 'Skonto %', 'Skonto bis', 'Mit Skonto', 'Bezahlt am', 'Gezahlt',
     ...rates.flatMap(r => ['Netto ' + fmtRate(r) + ' %', 'USt ' + fmtRate(r) + ' %'])];
   const lines = [head.map(csvText)];
   for (const b of list) {
@@ -1383,6 +1617,8 @@ function exportBelege(list) {
     lines.push([csvText(fmtDate(b.datum)), csvText(b.lieferant), csvText(b.land), csvText(b.nr), csvText(c ? c.name : ''),
       csvNum(b.netto), csvNum(b.ust), csvNum(b.brutto), csvNum(b.zahlbetrag), csvText(fmtDate(b.faellig)),
       b.bezahlt ? 'bezahlt' : 'offen', b.status === 'ok' ? 'ja' : 'nein', csvText(b.notiz),
+      csvText(b.empfaenger), csvText(fmtIban(b.iban)), csvText(b.referenz), isNum(b.skontoProz) ? fmtRate(b.skontoProz) : '', csvText(fmtDate(b.skontoBis)),
+      csvNum(skontoInfo(b).amount), csvText(fmtDate(b.bezahltAm)), csvNum(b.bezahlt ? (isNum(b.gezahlt) ? b.gezahlt : offenBetrag(b)) : null),
       ...rates.flatMap(r => { const rs = b.steuer.filter(s => s.satz === r); return rs.length ? [csvNum(sum(rs.map(s => s.netto))), csvNum(sum(rs.map(s => s.ust)))] : ['', '']; })]);
   }
   csvFile('rechnungen-belege', lines);
@@ -1495,7 +1731,7 @@ async function loadBackup(file) {
       const blob = await zip.get(m.pfad, m.type);
       if (blob) files.push({ id: m.id, beleg: m.beleg, idx: m.idx, type: m.type, name: m.name, blob });
     }
-    const belege = data.belege.filter(b => b && typeof b.id === 'string' && Array.isArray(b.dateien));
+    const belege = data.belege.filter(b => b && typeof b.id === 'string' && Array.isArray(b.dateien)).map(fillDefaults);
     await dbWrite((sb, sf) => {
       sb.clear(); sf.clear();
       belege.forEach(b => sb.put(b));
@@ -1533,7 +1769,7 @@ async function start() {
   mq.addEventListener && mq.addEventListener('change', () => { if ((S.theme || 'system') === 'system') { applyTheme(); route(); } });
   try {
     idb = await openDB();
-    (await dbAll('belege')).forEach(b => BL.set(b.id, b));
+    (await dbAll('belege')).forEach(b => BL.set(b.id, fillDefaults(b)));
   } catch (e) {
     $('#view').innerHTML = '<section class="card empty" style="margin-top:40px"><p>Speicher nicht verfügbar</p></section>';
     return;
