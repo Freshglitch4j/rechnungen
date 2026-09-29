@@ -313,3 +313,4 @@ body.no-tabs .toast{bottom:calc(var(--safe-b) + 88px)}
 .pl button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--accent);flex:none}
 .pl button:active{background:var(--press)}
 .pl button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.linkbtn.center{justify-content:center;width:100%}

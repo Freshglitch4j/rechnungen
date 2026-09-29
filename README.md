@@ -39,8 +39,9 @@ Läuft über GitHub Pages aus `main`: https://freshglitch4j.github.io/rechnungen
   (gleiche Rechnungsnummer und gleicher Lieferant), Vollbild mit Zoomen
 - **Bezahlen** – Empfänger, IBAN, BIC, Zahlungsreferenz und Skonto werden
   mit ausgelesen. „Bezahlen“ erzeugt einen „Zahlen mit Code“-QR-Code
-  (EPC-QR), der als Bild gespeichert und in George unter *QR-Code scannen →
-  aus Ordner* eingelesen wird; dazu Kopier-Knöpfe und „George öffnen“. Mit
+  (EPC-QR). „Mit George bezahlen“ übergibt ihn über das Teilen-Menü direkt
+  an George; als Reserve „QR-Code speichern“ (in George unter *QR-Code
+  scannen → aus Ordner*) und Kopier-Knöpfe für jeden Wert. Mit
   Skonto bis zur Frist automatisch der niedrigere Betrag. IBAN mit
   Prüfziffernkontrolle und Warnung, wenn ein Lieferant plötzlich eine andere
   IBAN verwendet als früher.
@@ -176,13 +177,12 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
   Format `RF…` (ISO 11649) kommt ins strukturierte Feld, alles andere als
   Verwendungszweck; ohne Angabe „Rechnung <Nr.>“. Geprüft wird im Test mit
   einem unabhängigen QR-Decoder (jsQR).
-- **George öffnen.** Chrome startet aus Webseiten nur Apps, die dafür einen
-  Einsprung (BROWSABLE) anbieten; der normale Startbildschirm von George
-  gehört nicht dazu, einen dokumentierten Deep Link gibt es nicht. Die
-  Intent-Adresse mit `package=at.erstebank.george` landet deshalb im Play
-  Store, dort öffnet „Öffnen“ die App. Zusätzlich gibt es „Teilen“ (Web
-  Share mit der PNG-Datei), damit das QR-Bild direkt an George übergeben
-  werden kann, falls George im Teilen-Menü erscheint.
+- **Übergabe an George.** Standard ist Web Share mit der PNG-Datei; George
+  nimmt das Bild aus dem Teilen-Menü an (auf dem Zielgerät bestätigt). Ein
+  direktes Öffnen von George per Intent-Adresse funktioniert nicht: Chrome
+  startet aus Webseiten nur Apps mit BROWSABLE-Einsprung, George bietet
+  keinen dokumentierten Deep Link, `package=at.erstebank.george` landet im
+  Play Store. Ohne Web Share zeigt die App „QR-Code speichern“ als Hauptknopf.
 - **Farbe der Statusleiste.** Installiert unter Android gilt nur
   `theme_color` aus dem Manifest (eine Farbe für beide Modi), im Browsertab
   die beiden `<meta name="theme-color">`.
