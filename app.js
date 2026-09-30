@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.1.3';
+const APP_VERSION = '1.1.4';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -321,37 +321,42 @@ async function renderPdfPage(doc, n, width) {
 const SYSTEM_PROMPT = `Du liest Rechnungen und Belege für einen privaten Hausbau in Österreich aus. Du bekommst Fotos (eine oder mehrere Seiten desselben Belegs) oder ein PDF und gibst die Daten im vorgegebenen JSON-Format zurück.
 
 Regeln:
-- Übernimm nur, was auf dem Beleg steht, und rate nichts. Berechnungen aus Werten des Belegs sind erlaubt. Fehlt ein Wert und lässt er sich nicht berechnen, setze null.
+- Übernimm nur, was auf dem Beleg steht, und rate nichts. Berechnungen aus Werten des Belegs sind erlaubt. Fehlt ein Wert und lässt er sich nicht berechnen: Texte und Datumsangaben als leerer Text, Zahlen als null.
 - Beträge als Zahl mit Punkt als Dezimaltrennzeichen, ohne Tausenderpunkte und ohne Währungszeichen (1.234,56 € wird 1234.56).
 - Datumsangaben als JJJJ-MM-TT. Belege aus Österreich und Deutschland schreiben das Datum als TT.MM.JJJJ.
 - lieferant: Firmenname des Rechnungsausstellers (nicht des Empfängers), ohne Adresse.
 - land: Land des Ausstellers als zweistelliger ISO-Code (AT, DE, IT, …), erkennbar an Adresse, UID-Nummer (ATU…, DE…) oder Telefonvorwahl.
 - rechnungsnummer: genau wie gedruckt.
-- faelligkeitsdatum: ausdrücklich genanntes Zahlungsziel; bei „zahlbar binnen N Tagen“ Rechnungsdatum plus N Tage; bei „sofort fällig“ das Rechnungsdatum; sonst null. Eine Skontofrist ist nicht das Fälligkeitsdatum.
+- faelligkeitsdatum: ausdrücklich genanntes Zahlungsziel; bei „zahlbar binnen N Tagen“ Rechnungsdatum plus N Tage; bei „sofort fällig“ das Rechnungsdatum; sonst leer. Eine Skontofrist ist nicht das Fälligkeitsdatum.
 - waehrung: ISO-Code der Währung (EUR, CHF, …).
-- steuer: ein Eintrag je Umsatzsteuersatz auf dem Beleg, jeweils mit Satz in Prozent, Nettobetrag und Steuerbetrag – alle drei ausfüllen. Steht der Steuerbetrag nur als Gesamtsumme da, übernimm ihn in den Eintrag. Weist der Beleg keinen Steuerbetrag aus (z. B. Kleinbetragsrechnung „inkl. 20 % USt“), berechne Steuer = Brutto × Satz ÷ (100 + Satz) und Netto = Brutto − Steuer; ebenso Steuer = Brutto − Netto, wenn nur Brutto und Netto dastehen. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0.
+- steuer: Liste mit einem Eintrag je Umsatzsteuersatz, jeder Eintrag mit den Feldern satz (Prozent), netto (Nettobetrag) und ust (Steuerbetrag) – alle drei ausfüllen. Steht der Steuerbetrag nur als Gesamtsumme da, übernimm ihn in den Eintrag. Weist der Beleg keinen Steuerbetrag aus (z. B. Kleinbetragsrechnung „inkl. 20 % USt“), berechne Steuer = Brutto × Satz ÷ (100 + Satz) und Netto = Brutto − Steuer; ebenso Steuer = Brutto − Netto, wenn nur Brutto und Netto dastehen. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0.
 - netto, ust, brutto: Summen des Belegs. Prüfe, ob netto + ust = brutto ergibt und ob die Steuerbeträge zu den Sätzen passen. Weichen die gedruckten Werte ab, übernimm trotzdem die gedruckten Werte und nenne die Abweichung im Hinweis.
 - zahlbetrag: tatsächlich zu zahlender Endbetrag nach Abzug von Anzahlungen, Teilzahlungen, Abschlagsrechnungen oder Haftrücklass. Ist nichts abgezogen, gleich brutto. Skonto nicht abziehen.
 - Gutschriften: Beträge negativ.
 - bezahlt: true nur, wenn der Beleg eindeutig zeigt, dass schon bezahlt wurde (Kassenbon, Barzahlung, Kartenzahlung, „bezahlt“, „Betrag erhalten“). Sonst false.
-- kategorie: die passendste Kategorie aus der Liste; passt keine, null.
-- positionen: jede Rechnungsposition mit Bezeichnung (kurz, wie gedruckt), Menge mit Einheit wie gedruckt und Gesamtbetrag der Zeile. Keine Zwischensummen, Steuerzeilen oder Überträge.
-- empfaenger: Kontoinhaber laut Bankverbindung des Ausstellers; steht keiner dabei, null.
-- iban: IBAN des Ausstellers ohne Leerzeichen, Zeichen für Zeichen genau wie gedruckt. Bei mehreren Bankverbindungen die erste. Nicht die IBAN des Kunden: Wird der Betrag abgebucht (Lastschrift, Einzug), setze null und nenne das im Hinweis.
-- bic: BIC des Ausstellers, sonst null.
-- zahlungsreferenz: was laut Beleg bei der Überweisung als Zahlungsreferenz oder Verwendungszweck anzugeben ist, genau wie gedruckt; steht nichts dabei, null.
-- skonto_prozent, skonto_frist, skonto_betrag: Skonto in Prozent, letzter Tag der Skontofrist (bei „binnen N Tagen“ Rechnungsdatum plus N Tage) und der Zahlbetrag mit Skonto, falls gedruckt. Ohne Skonto jeweils null.
-- hinweis: kurzer deutscher Hinweis auf Wichtiges, sonst null: Haftrücklass, abgezogene Anzahlungen, Abschlags- oder Schlussrechnung, Reverse Charge, Abbuchung per Lastschrift, andere Währung als Euro, fehlende oder abgeschnittene Seiten, Rechenfehler auf dem Beleg. Skonto nur in den Skonto-Feldern.
+- kategorie: die passendste Kategorie aus der Liste; passt keine, leer.
+- positionen: Liste aller Rechnungspositionen, jede mit den Feldern text (Bezeichnung, kurz, wie gedruckt), menge (Menge mit Einheit wie gedruckt) und betrag (Gesamtbetrag der Zeile). Keine Zwischensummen, Steuerzeilen oder Überträge.
+- empfaenger: Kontoinhaber laut Bankverbindung des Ausstellers; steht keiner dabei, leer.
+- iban: IBAN des Ausstellers ohne Leerzeichen, Zeichen für Zeichen genau wie gedruckt. Bei mehreren Bankverbindungen die erste. Nicht die IBAN des Kunden: Wird der Betrag abgebucht (Lastschrift, Einzug), leer lassen und nenne das im Hinweis.
+- bic: BIC des Ausstellers, sonst leer.
+- zahlungsreferenz: was laut Beleg bei der Überweisung als Zahlungsreferenz oder Verwendungszweck anzugeben ist, genau wie gedruckt; steht nichts dabei, leer.
+- skonto_prozent, skonto_frist, skonto_betrag: Skonto in Prozent, letzter Tag der Skontofrist (bei „binnen N Tagen“ Rechnungsdatum plus N Tage) und der Zahlbetrag mit Skonto, falls gedruckt. Ohne Skonto leer bzw. null.
+- hinweis: kurzer deutscher Hinweis auf Wichtiges, sonst leer: Haftrücklass, abgezogene Anzahlungen, Abschlags- oder Schlussrechnung, Reverse Charge, Abbuchung per Lastschrift, andere Währung als Euro, fehlende oder abgeschnittene Seiten, Rechenfehler auf dem Beleg. Skonto nur in den Skonto-Feldern.
 - unsicher: Namen der Felder, die schlecht lesbar, abgeschnitten, handschriftlich oder widersprüchlich sind.`;
 
 const UNSURE_FIELDS = ['lieferant', 'land', 'rechnungsnummer', 'rechnungsdatum', 'faelligkeitsdatum', 'steuer', 'netto', 'ust', 'brutto', 'zahlbetrag', 'kategorie', 'positionen', 'iban', 'skonto'];
+/* Grenzen der strukturierten Ausgabe je Anfrage: höchstens 16 Felder mit Union-Typ
+   (anyOf oder Typ-Liste wie ["number","null"]) und 24 optionale Felder – sonst antwortet die API
+   mit „Schema is too complex for compilation“. Texte und Datumsangaben deshalb als leerer
+   Text statt null, nur Zahlen dürfen null sein (derzeit 9 Felder), alle Felder sind Pflicht. */
+const SCHEMA_MAX_UNIONS = 16;
 function schema() {
   const names = [...new Set(S.cats.map(c => c.name))];
-  const nstr = { type: ['string', 'null'] }, nnum = { type: ['number', 'null'] };
-  const date = { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] };
+  const text = { type: 'string' }, nnum = { type: ['number', 'null'] };
+  const date = { type: 'string', description: 'JJJJ-MM-TT oder leer' };
   const props = {
-    lieferant: nstr, land: nstr, rechnungsnummer: nstr,
-    rechnungsdatum: date, faelligkeitsdatum: date, waehrung: nstr,
+    lieferant: text, land: text, rechnungsnummer: text,
+    rechnungsdatum: date, faelligkeitsdatum: date, waehrung: text,
     steuer: {
       type: 'array', items: {
         type: 'object', additionalProperties: false, required: ['satz', 'netto', 'ust'],
@@ -360,19 +365,27 @@ function schema() {
     },
     netto: nnum, ust: nnum, brutto: nnum, zahlbetrag: nnum,
     bezahlt: { type: 'boolean' },
-    kategorie: names.length ? { anyOf: [{ type: 'string', enum: names }, { type: 'null' }] } : { type: 'null' },
+    kategorie: { type: 'string', enum: [...names, ''] },
     positionen: {
       type: 'array', items: {
         type: 'object', additionalProperties: false, required: ['text', 'menge', 'betrag'],
-        properties: { text: { type: 'string' }, menge: nstr, betrag: nnum }
+        properties: { text, menge: text, betrag: nnum }
       }
     },
-    empfaenger: nstr, iban: nstr, bic: nstr, zahlungsreferenz: nstr,
+    empfaenger: text, iban: text, bic: text, zahlungsreferenz: text,
     skonto_prozent: nnum, skonto_frist: date, skonto_betrag: nnum,
-    hinweis: nstr,
+    hinweis: text,
     unsicher: { type: 'array', items: { type: 'string', enum: UNSURE_FIELDS } }
   };
   return { type: 'object', additionalProperties: false, required: Object.keys(props), properties: props };
+}
+/* Zählt Felder mit Union-Typ – für den Test gegen SCHEMA_MAX_UNIONS */
+function schemaUnions(x) {
+  if (!x || typeof x !== 'object') return 0;
+  let n = Array.isArray(x.type) || x.anyOf ? 1 : 0;
+  if (x.properties) for (const k in x.properties) n += schemaUnions(x.properties[k]);
+  if (x.items) n += schemaUnions(x.items);
+  return n;
 }
 function userText() {
   const cats = S.cats.map(k => '- ' + k.name + (k.hint ? ': ' + k.hint : '')).join('\n');
@@ -442,7 +455,7 @@ async function callClaude(content, modelId) {
       const text = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
       const data = parseJSON(text);
       if (!data || typeof data !== 'object') throw new Error('Antwort von Claude nicht lesbar');
-      return { data, usage: j.usage || {}, model };
+      return { data, usage: j.usage || {}, model, schema: useFormat };
     }
     let j = null;
     try { j = await r.json(); } catch (e) { }
@@ -454,7 +467,8 @@ async function callClaude(content, modelId) {
   }
 }
 const str = v => typeof v === 'string' ? v.trim() : '';
-const numOr = v => isNum(v) ? round2(v) : null;
+const numOr = v => { if (isNum(v)) return round2(v); const n = typeof v === 'string' ? parseNum(v) : null; return isNum(n) ? n : null; };
+const pick = (o, ...keys) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; return null; };
 const arr = v => Array.isArray(v) ? v : [];
 /* Fehlende Steuerwerte aus den vorhandenen Beträgen ergänzen – gedruckte Werte haben Vorrang.
    Stimmt etwas nicht zusammen, zeigt es die Plausibilitätsprüfung. */
@@ -491,14 +505,20 @@ function applyExtraction(b, d) {
   b.datum = validDay(d.rechnungsdatum);
   b.faellig = validDay(d.faelligkeitsdatum);
   b.waehrung = (str(d.waehrung) || 'EUR').toUpperCase();
-  b.steuer = arr(d.steuer).filter(s => s && typeof s === 'object').map(s => ({ satz: numOr(s.satz), netto: numOr(s.netto), ust: numOr(s.ust) }));
+  b.steuer = arr(d.steuer).filter(s => s && typeof s === 'object').map(s => ({
+    satz: numOr(pick(s, 'satz', 'steuersatz', 'prozent')),
+    netto: numOr(pick(s, 'netto', 'nettobetrag')),
+    ust: numOr(pick(s, 'ust', 'steuer', 'steuerbetrag', 'ust_betrag', 'mwst', 'betrag'))
+  }));
   b.netto = numOr(d.netto); b.ust = numOr(d.ust); b.brutto = numOr(d.brutto); b.zahlbetrag = numOr(d.zahlbetrag);
   if (!b.steuer.length && (isNum(b.netto) || isNum(b.ust))) b.steuer = [{ satz: null, netto: b.netto, ust: b.ust }];
   fillTax(b);
   b.bezahlt = d.bezahlt === true;
   const cat = S.cats.find(c => c.name === d.kategorie);
   b.kategorie = cat ? cat.id : null;
-  b.positionen = arr(d.positionen).filter(p => p && typeof p === 'object').map(p => ({ text: str(p.text), menge: str(p.menge), betrag: numOr(p.betrag) }));
+  b.positionen = arr(d.positionen).filter(p => p && typeof p === 'object').map(p => ({
+    text: str(pick(p, 'text', 'bezeichnung', 'beschreibung')), menge: str(pick(p, 'menge')), betrag: numOr(pick(p, 'betrag', 'gesamt', 'summe'))
+  }));
   const h = str(d.hinweis);
   if (h && !b.notiz.includes(h)) b.notiz = b.notiz ? b.notiz + '\n' + h : h;
   b.unsicher = arr(d.unsicher).filter(x => UNSURE_FIELDS.includes(x));
@@ -523,10 +543,11 @@ function extract(id, modelId = S.model) {
       if (!apiKey()) throw new Error('Kein API-Schlüssel eingetragen');
       if (!navigator.onLine) { const e = new Error('Keine Internetverbindung'); e.netz = true; throw e; }
       const content = await buildContent(b, await filesOf(b));
-      const { data, usage, model } = await callClaude(content, modelId);
+      const { data, usage, model, schema: withSchema } = await callClaude(content, modelId);
       const cur = BL.get(id);
       if (!cur) return; // inzwischen gelöscht
       applyExtraction(cur, data);
+      cur.rohSchema = withSchema;
       const cost = ((usage.input_tokens || 0) * model.pin + (usage.output_tokens || 0) * model.pout) / 1e6;
       Object.assign(cur, { status: 'pruefen', modell: model.id, ausgelesen: new Date().toISOString(), fehler: null, netzfehler: false, kosten: (cur.kosten || 0) + cost, updated: new Date().toISOString() });
       S.cost = (S.cost || 0) + cost; saveSettings();
@@ -1305,7 +1326,7 @@ function bindForm(v) {
   const redo = $('#redo');
   if (redo) redo.onclick = redoSheet;
   const raw = $('#raw');
-  if (raw) raw.onclick = () => openSheet(`<h3>Rohdaten</h3><pre class="raw">${esc(JSON.stringify(w.roh, null, 2))}</pre>`);
+  if (raw) raw.onclick = () => openSheet(`<h3>Rohdaten</h3>${w.rohSchema === false ? '<p class="txt">Ohne Datenschema ausgelesen</p>' : ''}<pre class="raw">${esc(JSON.stringify(w.roh, null, 2))}</pre>`);
 }
 async function saveDetail() {
   const w = DS.w;

@@ -173,6 +173,17 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
 - **Formular-Ereignisse.** Die Eingaben auf der Beleg-Seite werden einmalig
   am `#view` registriert (`onFormInput` usw.), nicht bei jedem Rendern –
   sonst vervielfachen sie sich.
+- **Grenzen des Datenschemas.** Die strukturierte Ausgabe erlaubt je Anfrage
+  höchstens 16 Felder mit Union-Typ (`anyOf` oder `["number","null"]`) und
+  24 optionale Felder. Darüber antwortet die API mit 400 „Schema is too
+  complex for compilation“, und die App fällt auf eine Anfrage ohne Schema
+  zurück – dann wählt Claude die Feldnamen in Unterobjekten selbst (so ging
+  in 1.1.0–1.1.3 der Steuerbetrag verloren). Deshalb: Texte und Datum als
+  leerer Text statt `null`, nur Zahlen nullable (derzeit 9), alle Felder
+  Pflicht. Neue Felder immer gegen `SCHEMA_MAX_UNIONS` prüfen
+  (`schemaUnions(schema())`). Ob ohne Schema ausgelesen wurde, steht unter
+  „Rohdaten“; `applyExtraction` akzeptiert für diesen Fall auch abweichende
+  Feldnamen und Zahlen als Text.
 - **Steuerwerte ergänzen.** `fillTax()` füllt nach dem Auslesen fehlende
   Werte aus den vorhandenen: Gesamtsteuer in den einzigen Steuereintrag,
   Steuer = Brutto − Netto, Kleinbetragsrechnung (nur Brutto und Satz),
