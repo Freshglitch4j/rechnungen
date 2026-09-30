@@ -110,7 +110,8 @@ belege:  { id, created, updated, status: "warten"|"pruefen"|"ok", art: "foto"|"p
            bezahlt, bezahltAm, gezahlt, waehrung, steuer: [{ satz, netto, ust }], netto, ust, brutto,
            zahlbetrag, empfaenger, iban, bic, referenz, skontoProz, skontoBis, skontoBetrag,
            positionen: [{ text, menge, betrag }], notiz,
-           unsicher: [feld], modell, ausgelesen, fehler, netzfehler, kosten }
+           unsicher: [feld], modell, ausgelesen, fehler, netzfehler, kosten,
+           roh /* Antwort von Claude, im Beleg unter „Rohdaten“ */ }
 dateien: { id, beleg, idx, type, name, blob }   // Fotos als JPEG, PDFs im Original
 ```
 
@@ -172,6 +173,12 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
 - **Formular-Ereignisse.** Die Eingaben auf der Beleg-Seite werden einmalig
   am `#view` registriert (`onFormInput` usw.), nicht bei jedem Rendern –
   sonst vervielfachen sie sich.
+- **Steuerwerte ergänzen.** `fillTax()` füllt nach dem Auslesen fehlende
+  Werte aus den vorhandenen: Gesamtsteuer in den einzigen Steuereintrag,
+  Steuer = Brutto − Netto, Kleinbetragsrechnung (nur Brutto und Satz),
+  Steuer = Netto × Satz, fehlender Satz aus Netto und Steuer. Gedruckte
+  Werte werden nie überschrieben; was nicht zusammenpasst, zeigt die
+  Plausibilitätsprüfung.
 - **Bezahl-QR-Code.** Aufbau nach EPC069-12, Version `002` (BIC optional),
   Zeichensatz UTF-8, Betrag mit Punkt (`EUR1455.00`). Eine Referenz im
   Format `RF…` (ISO 11649) kommt ins strukturierte Feld, alles andere als

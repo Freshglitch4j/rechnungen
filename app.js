@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.1.3';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -321,7 +321,7 @@ async function renderPdfPage(doc, n, width) {
 const SYSTEM_PROMPT = `Du liest Rechnungen und Belege für einen privaten Hausbau in Österreich aus. Du bekommst Fotos (eine oder mehrere Seiten desselben Belegs) oder ein PDF und gibst die Daten im vorgegebenen JSON-Format zurück.
 
 Regeln:
-- Übernimm nur, was auf dem Beleg steht, und rate nichts. Fehlt ein Wert, setze null.
+- Übernimm nur, was auf dem Beleg steht, und rate nichts. Berechnungen aus Werten des Belegs sind erlaubt. Fehlt ein Wert und lässt er sich nicht berechnen, setze null.
 - Beträge als Zahl mit Punkt als Dezimaltrennzeichen, ohne Tausenderpunkte und ohne Währungszeichen (1.234,56 € wird 1234.56).
 - Datumsangaben als JJJJ-MM-TT. Belege aus Österreich und Deutschland schreiben das Datum als TT.MM.JJJJ.
 - lieferant: Firmenname des Rechnungsausstellers (nicht des Empfängers), ohne Adresse.
@@ -329,7 +329,7 @@ Regeln:
 - rechnungsnummer: genau wie gedruckt.
 - faelligkeitsdatum: ausdrücklich genanntes Zahlungsziel; bei „zahlbar binnen N Tagen“ Rechnungsdatum plus N Tage; bei „sofort fällig“ das Rechnungsdatum; sonst null. Eine Skontofrist ist nicht das Fälligkeitsdatum.
 - waehrung: ISO-Code der Währung (EUR, CHF, …).
-- steuer: ein Eintrag je Umsatzsteuersatz auf dem Beleg mit Satz in Prozent, Nettobetrag und Steuerbetrag. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0. Nennt ein Kassenbon nur Brutto und enthaltene Steuer, berechne Netto = Brutto − Steuer.
+- steuer: ein Eintrag je Umsatzsteuersatz auf dem Beleg, jeweils mit Satz in Prozent, Nettobetrag und Steuerbetrag – alle drei ausfüllen. Steht der Steuerbetrag nur als Gesamtsumme da, übernimm ihn in den Eintrag. Weist der Beleg keinen Steuerbetrag aus (z. B. Kleinbetragsrechnung „inkl. 20 % USt“), berechne Steuer = Brutto × Satz ÷ (100 + Satz) und Netto = Brutto − Steuer; ebenso Steuer = Brutto − Netto, wenn nur Brutto und Netto dastehen. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0.
 - netto, ust, brutto: Summen des Belegs. Prüfe, ob netto + ust = brutto ergibt und ob die Steuerbeträge zu den Sätzen passen. Weichen die gedruckten Werte ab, übernimm trotzdem die gedruckten Werte und nenne die Abweichung im Hinweis.
 - zahlbetrag: tatsächlich zu zahlender Endbetrag nach Abzug von Anzahlungen, Teilzahlungen, Abschlagsrechnungen oder Haftrücklass. Ist nichts abgezogen, gleich brutto. Skonto nicht abziehen.
 - Gutschriften: Beträge negativ.
@@ -339,7 +339,7 @@ Regeln:
 - empfaenger: Kontoinhaber laut Bankverbindung des Ausstellers; steht keiner dabei, null.
 - iban: IBAN des Ausstellers ohne Leerzeichen, Zeichen für Zeichen genau wie gedruckt. Bei mehreren Bankverbindungen die erste. Nicht die IBAN des Kunden: Wird der Betrag abgebucht (Lastschrift, Einzug), setze null und nenne das im Hinweis.
 - bic: BIC des Ausstellers, sonst null.
-- zahlungsreferenz: was laut Beleg bei der Überweisung als Zahlungsreferenz oder Verwendungszweck anzugeben ist; sonst null.
+- zahlungsreferenz: was laut Beleg bei der Überweisung als Zahlungsreferenz oder Verwendungszweck anzugeben ist, genau wie gedruckt; steht nichts dabei, null.
 - skonto_prozent, skonto_frist, skonto_betrag: Skonto in Prozent, letzter Tag der Skontofrist (bei „binnen N Tagen“ Rechnungsdatum plus N Tage) und der Zahlbetrag mit Skonto, falls gedruckt. Ohne Skonto jeweils null.
 - hinweis: kurzer deutscher Hinweis auf Wichtiges, sonst null: Haftrücklass, abgezogene Anzahlungen, Abschlags- oder Schlussrechnung, Reverse Charge, Abbuchung per Lastschrift, andere Währung als Euro, fehlende oder abgeschnittene Seiten, Rechenfehler auf dem Beleg. Skonto nur in den Skonto-Feldern.
 - unsicher: Namen der Felder, die schlecht lesbar, abgeschnitten, handschriftlich oder widersprüchlich sind.`;
@@ -456,7 +456,35 @@ async function callClaude(content, modelId) {
 const str = v => typeof v === 'string' ? v.trim() : '';
 const numOr = v => isNum(v) ? round2(v) : null;
 const arr = v => Array.isArray(v) ? v : [];
+/* Fehlende Steuerwerte aus den vorhandenen Beträgen ergänzen – gedruckte Werte haben Vorrang.
+   Stimmt etwas nicht zusammen, zeigt es die Plausibilitätsprüfung. */
+const RATES = [20, 19, 13, 10, 7, 5, 0];
+function fillTax(b) {
+  const rows = b.steuer;
+  if (rows.length === 1) {
+    const r = rows[0];
+    if (!isNum(r.netto) && isNum(b.netto)) r.netto = b.netto;
+    if (!isNum(r.ust) && isNum(b.ust)) r.ust = b.ust;
+    if (isNum(b.brutto)) {
+      if (isNum(r.netto) && !isNum(r.ust)) r.ust = round2(b.brutto - r.netto);
+      else if (isNum(r.ust) && !isNum(r.netto)) r.netto = round2(b.brutto - r.ust);
+      else if (!isNum(r.netto) && !isNum(r.ust) && isNum(r.satz)) { r.ust = round2(b.brutto * r.satz / (100 + r.satz)); r.netto = round2(b.brutto - r.ust); }
+    }
+  }
+  for (const r of rows) {
+    if (r.satz === 0 && !isNum(r.ust)) r.ust = 0;
+    if (isNum(r.satz) && isNum(r.netto) && !isNum(r.ust)) r.ust = round2(r.netto * r.satz / 100);
+    if (isNum(r.satz) && r.satz > 0 && isNum(r.ust) && !isNum(r.netto)) r.netto = round2(r.ust * 100 / r.satz);
+    if (!isNum(r.satz) && isNum(r.netto) && isNum(r.ust) && r.netto) {
+      const q = r.ust / r.netto * 100, hit = RATES.find(x => Math.abs(x - q) < 0.3);
+      if (hit !== undefined) r.satz = hit;
+    }
+  }
+  if (rows.length && !isNum(b.ust) && rows.every(r => isNum(r.ust))) b.ust = round2(sum(rows.map(r => r.ust)));
+  if (rows.length && !isNum(b.netto) && rows.every(r => isNum(r.netto))) b.netto = round2(sum(rows.map(r => r.netto)));
+}
 function applyExtraction(b, d) {
+  b.roh = d; // Antwort von Claude, zur Kontrolle unter „Rohdaten“
   b.lieferant = str(d.lieferant);
   b.land = str(d.land).toUpperCase().slice(0, 2);
   b.nr = str(d.rechnungsnummer);
@@ -466,6 +494,7 @@ function applyExtraction(b, d) {
   b.steuer = arr(d.steuer).filter(s => s && typeof s === 'object').map(s => ({ satz: numOr(s.satz), netto: numOr(s.netto), ust: numOr(s.ust) }));
   b.netto = numOr(d.netto); b.ust = numOr(d.ust); b.brutto = numOr(d.brutto); b.zahlbetrag = numOr(d.zahlbetrag);
   if (!b.steuer.length && (isNum(b.netto) || isNum(b.ust))) b.steuer = [{ satz: null, netto: b.netto, ust: b.ust }];
+  fillTax(b);
   b.bezahlt = d.bezahlt === true;
   const cat = S.cats.find(c => c.name === d.kategorie);
   b.kategorie = cat ? cat.id : null;
@@ -476,7 +505,7 @@ function applyExtraction(b, d) {
   b.empfaenger = str(d.empfaenger);
   b.iban = normIban(str(d.iban));
   b.bic = str(d.bic).replace(/\s/g, '').toUpperCase();
-  b.referenz = str(d.zahlungsreferenz);
+  b.referenz = str(d.zahlungsreferenz) || (b.nr ? 'Rechnung ' + b.nr : '');
   b.skontoProz = numOr(d.skonto_prozent);
   b.skontoBis = validDay(d.skonto_frist);
   b.skontoBetrag = numOr(d.skonto_betrag);
@@ -1110,7 +1139,7 @@ function formHTML(w) {
     <section class="card" id="pay">${payHTML(w)}</section>
     <section class="card" id="pos">${posHTML(w)}</section>
     <section class="card form"><div class="f"><label for="f-notiz">Notiz</label><textarea id="f-notiz" data-k="notiz" rows="3">${esc(w.notiz)}</textarea></div></section>
-    ${m ? `<p class="meta">Ausgelesen mit ${esc(m)} am ${fmtDate(w.ausgelesen.slice(0, 10))}${w.kosten ? ' · ≈ ' + fmtNum(w.kosten * 100, 1) + ' Cent' : ''}</p>` : ''}
+    ${m ? `<p class="meta">Ausgelesen mit ${esc(m)} am ${fmtDate(w.ausgelesen.slice(0, 10))}${w.kosten ? ' · ≈ ' + fmtNum(w.kosten * 100, 1) + ' Cent' : ''}${w.roh ? ' · <button class="rawlink" id="raw">Rohdaten</button>' : ''}</p>` : ''}
     ${apiKey() ? `<button class="btn ghost block" id="redo" style="margin-top:8px">${ICON.redo}Neu auslesen</button>` : ''}
     <button class="linkdanger" id="del">Beleg löschen</button>`;
 }
@@ -1138,9 +1167,9 @@ function payHTML(w) {
     <div class="f"><label for="f-empf">Empfänger</label><input id="f-empf" data-k="empfaenger" value="${esc(w.empfaenger)}" placeholder="${esc(w.lieferant)}" autocomplete="off"></div>
     <div class="f"><label for="f-iban">IBAN</label><input id="f-iban" data-k="iban" class="iban${un('iban')}" value="${esc(fmtIban(w.iban))}" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <div class="ferr" id="iban-err" ${!w.iban || ibanOk(w.iban) ? 'hidden' : ''}>IBAN ungültig – bitte mit dem Beleg vergleichen</div></div>
+    <div class="f"><label for="f-bic">BIC</label><input id="f-bic" data-k="bic" value="${esc(w.bic)}" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+    <div class="f"><label for="f-ref">Zahlungsreferenz</label><textarea id="f-ref" data-k="referenz" class="ref" rows="1" placeholder="${w.nr ? esc('Rechnung ' + w.nr) : ''}" autocomplete="off">${esc(w.referenz)}</textarea></div>
     <div class="grid2">
-      <div class="f"><label for="f-bic">BIC</label><input id="f-bic" data-k="bic" value="${esc(w.bic)}" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
-      <div class="f"><label for="f-ref">Zahlungsreferenz</label><input id="f-ref" data-k="referenz" value="${esc(w.referenz)}" placeholder="${w.nr ? esc('Rechnung ' + w.nr) : ''}" autocomplete="off"></div>
       <div class="f"><label for="f-skp">Skonto %</label><input id="f-skp" data-k="skontoProz" class="num${un('skonto')}" inputmode="decimal" value="${fmtRate(w.skontoProz)}"></div>
       <div class="f"><label for="f-skb">Skonto bis</label><input id="f-skb" type="date" data-k="skontoBis" class="${un('skonto')}" value="${esc(w.skontoBis)}"></div>
     </div>
@@ -1150,6 +1179,7 @@ function payHTML(w) {
     <button class="btn block" id="paybtn" style="margin:4px 0 16px" ${w.bezahlt ? 'hidden' : ''}>${ICON.euro}Bezahlen</button>
   </div>`;
 }
+function growArea(el) { el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; }
 function refreshIbanWarn() {
   const el = $('#ibanwarn');
   if (!el) return;
@@ -1212,6 +1242,7 @@ function onFormInput(e) {
   setVal(k, el.value); markDirty(); clearUnsure(el, k);
   if (el.hasAttribute('data-money') || k.startsWith('st.')) { el.classList.toggle('neg', Number.isNaN(parseNum(el.value))); refreshCheck(); }
   if (k === 'lieferant' || k === 'nr' || k === 'datum') { clearTimeout(dupT); dupT = setTimeout(refreshDups, 300); }
+  if (k === 'referenz') growArea(el);
   if (k === 'iban' || k === 'lieferant') {
     const bad = !!DS.w.iban && !ibanOk(DS.w.iban);
     const err = $('#iban-err');
@@ -1251,6 +1282,8 @@ function bindForm(v) {
     $('#pay').innerHTML = payHTML(w);
     const t = $('#paytog'); if (t) t.onclick = () => { DS.payOpen = true; rebindPay(); };
     const pb = $('#paybtn'); if (pb) pb.onclick = paySheet;
+    const ref = $('#f-ref');
+    if (ref) { growArea(ref); ref.onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); }; }
     refreshIbanWarn();
   };
   const rebindTax = () => {
@@ -1271,6 +1304,8 @@ function bindForm(v) {
   $('#del').onclick = deleteBeleg;
   const redo = $('#redo');
   if (redo) redo.onclick = redoSheet;
+  const raw = $('#raw');
+  if (raw) raw.onclick = () => openSheet(`<h3>Rohdaten</h3><pre class="raw">${esc(JSON.stringify(w.roh, null, 2))}</pre>`);
 }
 async function saveDetail() {
   const w = DS.w;
