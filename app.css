@@ -317,3 +317,5 @@ body.no-tabs .toast{bottom:calc(var(--safe-b) + 88px)}
 .f textarea.ref{min-height:46px;height:46px;resize:none;overflow:hidden;padding:12px}
 .rawlink{color:inherit;text-decoration:underline;font-size:inherit;padding:0}
 pre.raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:var(--fs-xs);line-height:1.45;background:var(--cmp);border-radius:var(--r-md);padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink-2)}
+.calc{border-style:dashed!important;border-color:var(--warn-line)!important;background-color:var(--warn-soft)!important}
+.check.calc{background:var(--warn-soft);color:var(--warn);border:0!important}

@@ -184,12 +184,14 @@ simuliert – so braucht der Test keinen Schlüssel und kostet nichts.
   (`schemaUnions(schema())`). Ob ohne Schema ausgelesen wurde, steht unter
   „Rohdaten“; `applyExtraction` akzeptiert für diesen Fall auch abweichende
   Feldnamen und Zahlen als Text.
-- **Steuerwerte ergänzen.** `fillTax()` füllt nach dem Auslesen fehlende
-  Werte aus den vorhandenen: Gesamtsteuer in den einzigen Steuereintrag,
-  Steuer = Brutto − Netto, Kleinbetragsrechnung (nur Brutto und Satz),
-  Steuer = Netto × Satz, fehlender Satz aus Netto und Steuer. Gedruckte
-  Werte werden nie überschrieben; was nicht zusammenpasst, zeigt die
-  Plausibilitätsprüfung.
+- **Steuerwerte: gelesen vor berechnet.** Claude soll nur lesen und keine
+  Beträge ausrechnen (fehlt einer: `null`). Erst dann ergänzt `fillTax()`
+  fehlende Werte (Brutto − Netto, Kleinbetragsrechnung, Netto × Satz, Satz
+  aus Netto und Steuer) und merkt sich jedes berechnete Feld in
+  `steuer[i].calc`. Solche Felder sind im Formular gestrichelt gelb und mit
+  „Berechnet, nicht vom Beleg gelesen“ gekennzeichnet; ändert man den Wert
+  von Hand, entfällt die Markierung. Eine nur als Gesamtsumme gedruckte
+  Steuer gilt als gelesen. Gelesene Werte werden nie überschrieben.
 - **Bezahl-QR-Code.** Aufbau nach EPC069-12, Version `002` (BIC optional),
   Zeichensatz UTF-8, Betrag mit Punkt (`EUR1455.00`). Eine Referenz im
   Format `RF…` (ISO 11649) kommt ins strukturierte Feld, alles andere als

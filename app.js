@@ -6,7 +6,7 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.1.5';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -321,7 +321,7 @@ async function renderPdfPage(doc, n, width) {
 const SYSTEM_PROMPT = `Du liest Rechnungen und Belege für einen privaten Hausbau in Österreich aus. Du bekommst Fotos (eine oder mehrere Seiten desselben Belegs) oder ein PDF und gibst die Daten im vorgegebenen JSON-Format zurück.
 
 Regeln:
-- Übernimm nur, was auf dem Beleg steht, und rate nichts. Berechnungen aus Werten des Belegs sind erlaubt. Fehlt ein Wert und lässt er sich nicht berechnen: Texte und Datumsangaben als leerer Text, Zahlen als null.
+- Übernimm nur, was auf dem Beleg steht. Rate nichts und rechne keine Beträge selbst aus: Steht ein Betrag nicht auf dem Beleg oder ist er nicht lesbar, setze null. Fehlende Texte und Datumsangaben als leerer Text.
 - Beträge als Zahl mit Punkt als Dezimaltrennzeichen, ohne Tausenderpunkte und ohne Währungszeichen (1.234,56 € wird 1234.56).
 - Datumsangaben als JJJJ-MM-TT. Belege aus Österreich und Deutschland schreiben das Datum als TT.MM.JJJJ.
 - lieferant: Firmenname des Rechnungsausstellers (nicht des Empfängers), ohne Adresse.
@@ -329,7 +329,7 @@ Regeln:
 - rechnungsnummer: genau wie gedruckt.
 - faelligkeitsdatum: ausdrücklich genanntes Zahlungsziel; bei „zahlbar binnen N Tagen“ Rechnungsdatum plus N Tage; bei „sofort fällig“ das Rechnungsdatum; sonst leer. Eine Skontofrist ist nicht das Fälligkeitsdatum.
 - waehrung: ISO-Code der Währung (EUR, CHF, …).
-- steuer: Liste mit einem Eintrag je Umsatzsteuersatz, jeder Eintrag mit den Feldern satz (Prozent), netto (Nettobetrag) und ust (Steuerbetrag) – alle drei ausfüllen. Steht der Steuerbetrag nur als Gesamtsumme da, übernimm ihn in den Eintrag. Weist der Beleg keinen Steuerbetrag aus (z. B. Kleinbetragsrechnung „inkl. 20 % USt“), berechne Steuer = Brutto × Satz ÷ (100 + Satz) und Netto = Brutto − Steuer; ebenso Steuer = Brutto − Netto, wenn nur Brutto und Netto dastehen. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0.
+- steuer: Liste mit einem Eintrag je Umsatzsteuersatz, jeder Eintrag mit den Feldern satz (Prozent), netto (Nettobetrag) und ust (Steuerbetrag) – alle drei ausfüllen. Steht der Steuerbetrag nur als Gesamtsumme da, übernimm ihn in den Eintrag. Beträge, die nicht auf dem Beleg stehen (z. B. Kleinbetragsrechnung nur mit „inkl. 20 % USt“), null – nicht ausrechnen. Steuerfreie Beträge, Reverse Charge oder Kleinunternehmer: Satz 0 und Steuer 0.
 - netto, ust, brutto: Summen des Belegs. Prüfe, ob netto + ust = brutto ergibt und ob die Steuerbeträge zu den Sätzen passen. Weichen die gedruckten Werte ab, übernimm trotzdem die gedruckten Werte und nenne die Abweichung im Hinweis.
 - zahlbetrag: tatsächlich zu zahlender Endbetrag nach Abzug von Anzahlungen, Teilzahlungen, Abschlagsrechnungen oder Haftrücklass. Ist nichts abgezogen, gleich brutto. Skonto nicht abziehen.
 - Gutschriften: Beträge negativ.
@@ -470,28 +470,31 @@ const str = v => typeof v === 'string' ? v.trim() : '';
 const numOr = v => { if (isNum(v)) return round2(v); const n = typeof v === 'string' ? parseNum(v) : null; return isNum(n) ? n : null; };
 const pick = (o, ...keys) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; return null; };
 const arr = v => Array.isArray(v) ? v : [];
-/* Fehlende Steuerwerte aus den vorhandenen Beträgen ergänzen – gedruckte Werte haben Vorrang.
-   Stimmt etwas nicht zusammen, zeigt es die Plausibilitätsprüfung. */
+/* Nur wenn ein Wert nicht auf dem Beleg steht (Claude liefert null), rechnet die App ihn aus
+   den gelesenen Beträgen aus. Berechnete Felder stehen in row.calc und werden im Formular
+   als „berechnet, nicht vom Beleg gelesen“ markiert. Gelesene Werte werden nie verändert. */
 const RATES = [20, 19, 13, 10, 7, 5, 0];
 function fillTax(b) {
   const rows = b.steuer;
+  const calc = (r, f, v) => { r[f] = round2(v); (r.calc = r.calc || []).includes(f) || r.calc.push(f); };
   if (rows.length === 1) {
     const r = rows[0];
+    // Gesamtwerte vom Beleg gehören bei nur einem Steuersatz in diese Zeile – gelesen, nicht berechnet
     if (!isNum(r.netto) && isNum(b.netto)) r.netto = b.netto;
     if (!isNum(r.ust) && isNum(b.ust)) r.ust = b.ust;
     if (isNum(b.brutto)) {
-      if (isNum(r.netto) && !isNum(r.ust)) r.ust = round2(b.brutto - r.netto);
-      else if (isNum(r.ust) && !isNum(r.netto)) r.netto = round2(b.brutto - r.ust);
-      else if (!isNum(r.netto) && !isNum(r.ust) && isNum(r.satz)) { r.ust = round2(b.brutto * r.satz / (100 + r.satz)); r.netto = round2(b.brutto - r.ust); }
+      if (isNum(r.netto) && !isNum(r.ust)) calc(r, 'ust', b.brutto - r.netto);
+      else if (isNum(r.ust) && !isNum(r.netto)) calc(r, 'netto', b.brutto - r.ust);
+      else if (!isNum(r.netto) && !isNum(r.ust) && isNum(r.satz)) { calc(r, 'ust', b.brutto * r.satz / (100 + r.satz)); calc(r, 'netto', b.brutto - r.ust); }
     }
   }
   for (const r of rows) {
     if (r.satz === 0 && !isNum(r.ust)) r.ust = 0;
-    if (isNum(r.satz) && isNum(r.netto) && !isNum(r.ust)) r.ust = round2(r.netto * r.satz / 100);
-    if (isNum(r.satz) && r.satz > 0 && isNum(r.ust) && !isNum(r.netto)) r.netto = round2(r.ust * 100 / r.satz);
+    if (isNum(r.satz) && isNum(r.netto) && !isNum(r.ust)) calc(r, 'ust', r.netto * r.satz / 100);
+    if (isNum(r.satz) && r.satz > 0 && isNum(r.ust) && !isNum(r.netto)) calc(r, 'netto', r.ust * 100 / r.satz);
     if (!isNum(r.satz) && isNum(r.netto) && isNum(r.ust) && r.netto) {
       const q = r.ust / r.netto * 100, hit = RATES.find(x => Math.abs(x - q) < 0.3);
-      if (hit !== undefined) r.satz = hit;
+      if (hit !== undefined) calc(r, 'satz', hit);
     }
   }
   if (rows.length && !isNum(b.ust) && rows.every(r => isNum(r.ust))) b.ust = round2(sum(rows.map(r => r.ust)));
@@ -1156,6 +1159,7 @@ function formHTML(w) {
         <div class="f"><label for="f-zahl">Zu zahlen</label><input id="f-zahl" data-k="zahlbetrag" data-money class="num${un('zahlbetrag')}" inputmode="decimal" value="${fmtIn(w.zahlbetrag)}"></div>
       </div>
       <div id="check"></div>
+      <div id="calcnote">${calcNoteHTML(w)}</div>
     </section>
     <section class="card" id="pay">${payHTML(w)}</section>
     <section class="card" id="pos">${posHTML(w)}</section>
@@ -1164,14 +1168,23 @@ function formHTML(w) {
     ${apiKey() ? `<button class="btn ghost block" id="redo" style="margin-top:8px">${ICON.redo}Neu auslesen</button>` : ''}
     <button class="linkdanger" id="del">Beleg löschen</button>`;
 }
+const CALC_LABEL = { satz: 'Steuersatz', netto: 'Netto', ust: 'USt' };
+function calcNoteHTML(w) {
+  const items = [];
+  w.steuer.forEach(s => ['satz', 'netto', 'ust'].filter(f => (s.calc || []).includes(f))
+    .forEach(f => items.push(CALC_LABEL[f] + (f !== 'satz' && isNum(s.satz) ? ' ' + fmtRate(s.satz) + ' %' : ''))));
+  return items.length ? `<div class="check calc">${ICON.warn}<span>Berechnet, nicht vom Beleg gelesen: ${esc(items.join(', '))}</span></div>` : '';
+}
+function refreshCalcNote() { const el = $('#calcnote'); if (el && DS) el.innerHTML = calcNoteHTML(DS.w); }
 function taxHTML(w) {
   const un = f => (w.unsicher || []).includes(f) ? ' unsure' : '';
+  const cl = (s, f) => (s.calc || []).includes(f) ? ' calc' : '';
   const p = plaus(w);
   return `<div class="trow head"><span>Satz %</span><span>Netto</span><span>USt</span><span></span></div>
     ${w.steuer.map((s, i) => `<div class="trow${p.bad.has(i) ? ' bad' : ''}" data-row="${i}">
-      <input class="tin num${un('steuer')}" data-k="st.${i}.satz" inputmode="decimal" value="${fmtRate(s.satz)}" aria-label="Steuersatz">
-      <input class="tin num${un('steuer')}${un('netto')}" data-k="st.${i}.netto" data-money inputmode="decimal" value="${fmtIn(s.netto)}" aria-label="Netto">
-      <input class="tin num${un('steuer')}${un('ust')}" data-k="st.${i}.ust" data-money inputmode="decimal" value="${fmtIn(s.ust)}" aria-label="Umsatzsteuer">
+      <input class="tin num${un('steuer')}${cl(s, 'satz')}" data-k="st.${i}.satz" inputmode="decimal" value="${fmtRate(s.satz)}" aria-label="Steuersatz">
+      <input class="tin num${un('steuer')}${un('netto')}${cl(s, 'netto')}" data-k="st.${i}.netto" data-money inputmode="decimal" value="${fmtIn(s.netto)}" aria-label="Netto">
+      <input class="tin num${un('steuer')}${un('ust')}${cl(s, 'ust')}" data-k="st.${i}.ust" data-money inputmode="decimal" value="${fmtIn(s.ust)}" aria-label="Umsatzsteuer">
       <button class="x" data-delst="${i}" aria-label="Zeile entfernen">${ICON.close}</button></div>`).join('')}
     <button class="linkbtn" id="addst">${ICON.plus}Steuersatz</button>
     ${w.steuer.length > 1 ? `<div class="trow sum"><span style="text-align:left;padding:0">Summe</span><span id="sn">${eur(p.sn)}</span><span id="su">${eur(p.su)}</span><span></span></div>` : ''}`;
@@ -1261,6 +1274,10 @@ function onFormInput(e) {
   const el = formField(e); if (!el) return;
   const k = el.dataset.k;
   setVal(k, el.value); markDirty(); clearUnsure(el, k);
+  if (k.startsWith('st.')) {
+    const [, i, f] = k.split('.'), r = DS.w.steuer[+i];
+    if (r && r.calc && r.calc.includes(f)) { r.calc = r.calc.filter(x => x !== f); el.classList.remove('calc'); refreshCalcNote(); }
+  }
   if (el.hasAttribute('data-money') || k.startsWith('st.')) { el.classList.toggle('neg', Number.isNaN(parseNum(el.value))); refreshCheck(); }
   if (k === 'lieferant' || k === 'nr' || k === 'datum') { clearTimeout(dupT); dupT = setTimeout(refreshDups, 300); }
   if (k === 'referenz') growArea(el);
@@ -1309,6 +1326,7 @@ function bindForm(v) {
   };
   const rebindTax = () => {
     $('#tax').innerHTML = taxHTML(w);
+    refreshCalcNote();
     $('#addst').onclick = () => { w.steuer.push({ satz: null, netto: null, ust: null }); markDirty(); rebindTax(); };
     $$('[data-delst]', v).forEach(b => b.onclick = () => { w.steuer.splice(+b.dataset.delst, 1); if (!w.steuer.length) w.steuer.push({ satz: null, netto: null, ust: null }); markDirty(); rebindTax(); });
     refreshCheck();
@@ -1334,6 +1352,7 @@ async function saveDetail() {
   if (bad) { toast('Bitte die rot markierten Beträge prüfen'); return; }
   w.lieferant = w.lieferant.trim(); w.nr = w.nr.trim(); w.notiz = w.notiz.trim();
   w.steuer = w.steuer.filter(s => isNum(s.netto) || isNum(s.ust));
+  w.steuer.forEach(s => { if (s.calc && !s.calc.length) delete s.calc; });
   w.positionen = w.positionen.map(p => ({ text: p.text.trim(), menge: (p.menge || '').trim(), betrag: p.betrag })).filter(p => p.text || isNum(p.betrag));
   if (w.steuer.length) { const p = plaus(w); w.netto = p.sn; w.ust = p.su; }
   if (!isNum(w.zahlbetrag) && isNum(w.brutto)) w.zahlbetrag = w.brutto;
