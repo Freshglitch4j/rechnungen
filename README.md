@@ -60,12 +60,15 @@ Semikolon als Trenner, Komma als Dezimaltrennzeichen, UTF-8 mit BOM.
 
 ## Modell
 
-Voreingestellt ist **Claude Sonnet 5.5** (`claude-sonnet-5-5`), mit
-`effort: medium` und strukturierter Ausgabe (`output_config.format` mit
-JSON-Schema), damit die Antwort immer gültiges JSON ist. In den Einstellungen
-umschaltbar auf Opus 5.5 (gründlicher, etwa doppelte Kosten) oder Haiku 4.5
-(billiger, schwächer bei kleiner Schrift). Einzelne Belege lassen sich auf der
-Beleg-Seite mit einem anderen Modell neu auslesen.
+Voreingestellt ist **Claude Haiku 5.5** (`claude-haiku-5-5`, seit Version 1.2),
+mit `effort: medium` und strukturierter Ausgabe (`output_config.format` mit
+JSON-Schema), damit die Antwort immer gültiges JSON ist. Haiku 5.5 liest Bilder
+in hoher Auflösung (bis 2576 px) wie Sonnet und kostet etwa ein Zwanzigstel
+(ca. 0,1 Cent je Beleg; ab 100.000 Tokens je Anfrage gilt ein höherer Preis).
+In den Einstellungen umschaltbar auf Sonnet 5.5 (ca. 2 Cent je Beleg) oder
+Opus 5.5. Einzelne Belege lassen sich auf der Beleg-Seite mit einem anderen
+Modell neu auslesen. Beim ersten Start von 1.2 wird die gespeicherte
+Modellwahl einmalig auf Haiku 5.5 gesetzt (`S.modelV12`).
 
 Die Kosten je Beleg werden aus den `usage`-Angaben der API berechnet und in
 den Einstellungen aufsummiert (Preise in `MODELS` in `app.js`).

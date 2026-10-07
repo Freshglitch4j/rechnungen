@@ -6,19 +6,28 @@
    ============================================================= */
 'use strict';
 
-const APP_VERSION = '1.1.5';
+const APP_VERSION = '1.2.0';
 const SET_KEY = 'rechnungen.v1';
 const API_KEY_KEY = 'rechnungen.key';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
 /* Modelle – Preise in US-Dollar je Million Tokens (Eingabe / Ausgabe) */
+/* Haiku 5.5: ab 100.000 Tokens je Anfrage gilt ein höherer Preis (big) – ein Beleg liegt weit darunter */
 const MODELS = [
-  { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5', effort: 'medium', pin: 2, pout: 10, hint: 'ca. 3–5 Cent je Beleg' },
-  { id: 'claude-opus-5-5', name: 'Opus 5.5', effort: 'medium', pin: 4, pout: 20, hint: 'ca. 6–10 Cent je Beleg' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', effort: null, pin: 1, pout: 5, hint: 'ca. 1 Cent je Beleg' }
+  { id: 'claude-haiku-5-5', name: 'Haiku 5.5', effort: 'medium', pin: 0.10, pout: 0.50, big: { from: 100000, pin: 0.50, pout: 2.50 }, hint: 'ca. 0,1 Cent je Beleg' },
+  { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5', effort: 'medium', pin: 2, pout: 10, hint: 'ca. 2 Cent je Beleg' },
+  { id: 'claude-opus-5-5', name: 'Opus 5.5', effort: 'medium', pin: 4, pout: 20, hint: 'ca. 4–8 Cent je Beleg' }
 ];
 const DEFAULT_MODEL = MODELS[0].id;
 const modelOf = id => MODELS.find(m => m.id === id) || MODELS[0];
+/* Anzeigename auch für Modelle, die nicht mehr zur Auswahl stehen (ältere Belege) */
+const OLD_MODEL_NAMES = { 'claude-haiku-4-5-20251001': 'Haiku 4.5' };
+const modelName = id => (MODELS.find(m => m.id === id) || {}).name || OLD_MODEL_NAMES[id] || id;
+function costOf(model, usage) {
+  const inTok = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+  const p = model.big && inTok > model.big.from ? model.big : model;
+  return ((usage.input_tokens || 0) * p.pin + (usage.output_tokens || 0) * p.pout) / 1e6;
+}
 
 /* Kategorienfarben (geprüfte Palette) – [hell, auf dunklem Grund] */
 const PALETTE = [
@@ -144,6 +153,8 @@ function loadSettings() {
   S = Object.assign({ v: 1, theme: 'system', model: DEFAULT_MODEL, cats: null, lastBackup: null, cost: 0 }, s && typeof s === 'object' ? s : {});
   if (!Array.isArray(S.cats)) S.cats = defaultCats();
   if (!MODELS.some(m => m.id === S.model)) S.model = DEFAULT_MODEL;
+  // Ab Version 1.2 ist Haiku 5.5 Standard – einmalig umstellen, danach gilt die eigene Wahl
+  if (!S.modelV12) { S.model = DEFAULT_MODEL; S.modelV12 = true; saveSettings(); }
 }
 function saveSettings() {
   try { localStorage.setItem(SET_KEY, JSON.stringify(S)); } catch (e) { toast('Einstellungen konnten nicht gespeichert werden'); }
@@ -551,7 +562,7 @@ function extract(id, modelId = S.model) {
       if (!cur) return; // inzwischen gelöscht
       applyExtraction(cur, data);
       cur.rohSchema = withSchema;
-      const cost = ((usage.input_tokens || 0) * model.pin + (usage.output_tokens || 0) * model.pout) / 1e6;
+      const cost = costOf(model, usage);
       Object.assign(cur, { status: 'pruefen', modell: model.id, ausgelesen: new Date().toISOString(), fehler: null, netzfehler: false, kosten: (cur.kosten || 0) + cost, updated: new Date().toISOString() });
       S.cost = (S.cost || 0) + cost; saveSettings();
       await putBeleg(cur);
@@ -1132,7 +1143,7 @@ function formHTML(w) {
   if (w.land && !lands.some(l => l[0] === w.land)) lands.push([w.land, w.land]);
   const landOpts = `<option value="">–</option>` + lands.map(([k, n]) => `<option value="${k}" ${w.land === k ? 'selected' : ''}>${esc(n)}</option>`).join('');
   if (!w.steuer.length) w.steuer.push({ satz: null, netto: null, ust: null });
-  const m = w.modell ? modelOf(w.modell).name : null;
+  const m = w.modell ? modelName(w.modell) : null;
   return `
     ${w.waehrung && w.waehrung !== 'EUR' ? `<div class="notice warn"><b>Währung ${esc(w.waehrung)}</b>Beträge sind nicht in Euro umgerechnet.</div>` : ''}
     <section class="card form">
