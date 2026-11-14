@@ -15,14 +15,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "io.github.freshglitch4j.abfahrt"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.freshglitch4j.abfahrt"
         minSdk = 34
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -74,6 +74,7 @@ kotlin {
 }
 
 dependencies {
+    compileOnly("androidx.annotation:annotation:1.9.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:core:1.6.1")

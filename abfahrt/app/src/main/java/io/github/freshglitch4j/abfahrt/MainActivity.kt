@@ -244,7 +244,7 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, on -> save(store.settings.copy(autoStand = on)) }
         })
         content.addView(Switch(this).apply {
-            text = "Als Live-Benachrichtigung (Now Bar) anfordern – aus: volle Karte am Sperrbildschirm"
+            text = "Now Bar / Always-On-Display: als Live-Benachrichtigung senden (aus: normale Karte am Sperrbildschirm)"
             isChecked = s.nowBar
             setOnCheckedChangeListener { _, on ->
                 save(store.settings.copy(nowBar = on))

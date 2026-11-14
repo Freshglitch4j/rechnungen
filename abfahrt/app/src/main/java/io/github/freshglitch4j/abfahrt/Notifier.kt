@@ -145,6 +145,9 @@ object Notifier {
             .setChronometerCountDown(true)
             .setDeleteIntent(service(context, Controller.ACTION_DISMISS, 23))
         if (Build.VERSION.SDK_INT >= 36) b.setShortCriticalText(Fmt.chip(p))
+        // Android 17: Kennzahlen-Vorlage – laut Samsung erscheinen solche Live-Benachrichtigungen
+        // in der Now Bar (Sperrbildschirm und Always-On-Display).
+        if (promote && Build.VERSION.SDK_INT >= 37) b.setStyle(metricStyle(p, others.firstOrNull { !it.gone }))
 
         val icon = Icon.createWithResource(context, R.drawable.ic_stat_bus)
         b.addAction(Notification.Action.Builder(icon, "Aktualisieren", service(context, Controller.ACTION_REFRESH, 20)).build())
@@ -184,6 +187,30 @@ object Notifier {
     const val ID_TEST_A = 91
     const val ID_TEST_B = 92
     const val ID_TEST_C = 93
+
+    /**
+     * Kennzahlen für die Now Bar: erwartete Abfahrt, Status bzw. Verspätung und die
+     * zweite Fahrt (oder die verbleibende Zeit). Ohne Echtzeit steht „Plan" im Etikett.
+     */
+    @androidx.annotation.RequiresApi(37)
+    private fun metricStyle(p: Row, second: Row?): Notification.MetricStyle {
+        fun timeOf(r: Row) = Notification.Metric(
+            Notification.Metric.FixedTime(r.effective.toLocalTime()),
+            r.lineLabel + if (r.hasRealtime) "" else " (Plan)",
+        )
+        val style = Notification.MetricStyle()
+            .addMetric(timeOf(p))
+            .addMetric(Notification.Metric(Notification.Metric.FixedText(p.statusText), "Status"))
+        if (second != null) {
+            style.addMetric(timeOf(second))
+        } else if (p.status != Status.CANCELLED) {
+            style.addMetric(Notification.Metric(
+                Notification.Metric.TimeDifference.forTimer(p.effective.atZone(ZONE).toInstant(), Notification.Metric.TimeDifference.FORMAT_ADAPTIVE),
+                "Abfahrt in",
+            ))
+        }
+        return style.setCriticalMetric(0)
+    }
 
     /** Schaltet die Standanzeige über dem Sperrbildschirm ein (Vollbild-Intent). */
     fun launchStand(context: Context) {
