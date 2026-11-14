@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@drawable/widget_bg"
+    android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="9dp" android:paddingBottom="9dp">
+    <TextView android:id="@+id/head" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="ABFAHRT" android:textColor="#9E9E9E" android:textSize="11sp" android:textStyle="bold"
+        android:letterSpacing="0.08" android:maxLines="1" android:ellipsize="end" />
+    <LinearLayout android:id="@+id/row1" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingTop="5dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+            android:baselineAligned="true">
+            <TextView android:id="@+id/label1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/times1" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="21sp" android:maxLines="1"
+                android:fontFeatureSettings="tnum" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:id="@+id/sub1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#B0B0B0" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/status1" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#9E9E9E" android:textSize="13sp" android:textStyle="bold" android:maxLines="1"
+                android:paddingStart="8dp" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row2" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingTop="5dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+            android:baselineAligned="true">
+            <TextView android:id="@+id/label2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/times2" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="21sp" android:maxLines="1"
+                android:fontFeatureSettings="tnum" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:id="@+id/sub2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#B0B0B0" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/status2" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#9E9E9E" android:textSize="13sp" android:textStyle="bold" android:maxLines="1"
+                android:paddingStart="8dp" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row3" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingTop="5dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+            android:baselineAligned="true">
+            <TextView android:id="@+id/label3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/times3" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:textSize="21sp" android:maxLines="1"
+                android:fontFeatureSettings="tnum" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:id="@+id/sub3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:textColor="#B0B0B0" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/status3" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#9E9E9E" android:textSize="13sp" android:textStyle="bold" android:maxLines="1"
+                android:paddingStart="8dp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
