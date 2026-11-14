@@ -71,14 +71,22 @@ class EngineTest {
         assertTrue(m.timeDeviates)
     }
 
-    @Test fun grattenbrueckeOhnePassendeFahrtZeigtAlternativen() {
-        val gratten = hin.connections.single { it.id == "hin-gratten" }
+    @Test fun uhrzeitOhnePassendeFahrtZeigtAlternativen() {
+        val gratten = hin.connections.single { it.id == "hin-gratten" }.copy(time = java.time.LocalTime.of(6, 37), line = "")
         val board = Board(listOf(
             dep(6, 28, name = "Bus 865", line = "865"), dep(6, 32, name = "Bus 4056", line = "4056"), dep(6, 42, name = "Bus 4055", line = "4055"),
         ))
         // 06:32 und 06:42 liegen gleich weit von 06:37 entfernt → nicht raten.
         val m = Engine.match(gratten, at(6, 37), board, true) as Match.NotFound
         assertEquals(listOf("06:32 Bus 4056", "06:42 Bus 4055"), m.alternatives.filter { !it.contains("865") })
+    }
+
+    @Test fun grattenbruecke0642MitLinie4055() {
+        val gratten = hin.connections.single { it.id == "hin-gratten" }
+        val board = Board(listOf(dep(6, 32, name = "Bus 4056", line = "4056"), dep(6, 42, 1, name = "Bus 4055", line = "4055")))
+        val m = Engine.match(gratten, at(6, 42), board, true) as Match.Found
+        assertEquals("Bus 4055", m.dep.name)
+        assertFalse(m.timeDeviates)
     }
 
     @Test fun linienfilterVergleichtGanzeWoerter() {

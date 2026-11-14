@@ -131,12 +131,9 @@ fun defaultConnections(): List<Connection> = listOf(
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),
     Connection(
-        // Die 06:37 ist in den Soll-Daten nicht enthalten (dort 06:32 Linie 4056
-        // und 06:42 Linie 4055). Ohne Linienfilter, damit die App die Fahrt
-        // anhand der Uhrzeit sucht und Abweichungen anzeigt.
-        id = "hin-gratten", kind = TripKind.HIN, label = "Bus",
+        id = "hin-gratten", kind = TripKind.HIN, label = "Bus 4055",
         stopName = "Kirchbichl Grattenbrücke", stopId = "at:47:65724",
-        time = LocalTime.of(6, 37), days = MO_FR, line = "",
+        time = LocalTime.of(6, 42), days = MO_FR, line = "4055",
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),
     Connection(

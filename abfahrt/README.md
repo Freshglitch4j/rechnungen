@@ -28,7 +28,7 @@ Echtzeitmeldungen aller Verkehrsunternehmen (VVT-Busse und ÖBB-Züge).
   15 Werktagen. Der Schlüssel wird in der App eingetragen und liegt nur auf dem
   Gerät – nie im Repository.
 - Limit: 100 Abfragen pro Tag. Ein normaler Montag (Hin- und Heimfahrt) braucht
-  rund 55; die App zählt mit und streckt den Takt, bevor das Limit erreicht ist.
+  rund 60; die App zählt mit und streckt den Takt, bevor das Limit erreicht ist.
 - Offene Echtzeit-Feeds (GTFS-RT/SIRI) gibt es für Tirol nicht. Die internen
   Schnittstellen der ÖBB-/VVT-Apps werden bewusst **nicht** verwendet.
 
@@ -46,19 +46,16 @@ Haltestellen, Linien und Zeiten sind gegen die offiziellen Soll-Fahrplandaten
 | Richtung | Tage | Plan | Linie | Haltestelle | ID |
 |---|---|---|---|---|---|
 | Hin | Mo–Fr | 06:33 | Bus 760 | Kastengstatt Moosegg | `at:47:65761` |
-| Hin | Mo–Fr | 06:37 | Bus (siehe unten) | Kirchbichl Grattenbrücke | `at:47:65724` |
+| Hin | Mo–Fr | 06:42 | Bus 4055 | Kirchbichl Grattenbrücke | `at:47:65724` |
 | Heim | Mo–Do | 16:46 | Bus 760 | Kundl Gemeindesaal | `at:47:64459` |
 | Heim | Mo–Do | 16:59 | REX 2 | Kundl Bahnhof | `at:47:1172` |
 | Heim | Fr | 12:29 | REX 2 | Kundl Bahnhof | `at:47:1172` |
 
-Alle Richtung Wörgl Hbf (`at:47:1170`). Offen: An der Grattenbrücke enthält der
-Fahrplan um 06:37 keine Abfahrt nach Wörgl, sondern 06:32 (Linie 4056) und
-06:42 (Linie 4055). Die App zeigt das an („nicht im Fahrplan · dort: …“); die
-Uhrzeit lässt sich unter *Verbindungen* korrigieren.
+Alle Richtung Wörgl Hbf (`at:47:1170`).
 
 ## Einrichtung am Handy
 
-1. `Abfahrt-1.0.0.apk` installieren (Installation aus dieser Quelle erlauben).
+1. `Abfahrt-1.0.1.apk` installieren (Installation aus dieser Quelle erlauben).
 2. App einmal öffnen, Benachrichtigungen erlauben und unter *Einrichtung* die
    mit „!“ markierten Punkte beheben (v. a. Akku: „Nicht eingeschränkt“).
 3. Galaxy-Einstellungen:

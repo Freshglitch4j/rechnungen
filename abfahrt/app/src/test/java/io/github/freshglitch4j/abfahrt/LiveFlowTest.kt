@@ -168,10 +168,10 @@ class LiveFlowTest {
         var d = step().display!!
         assertEquals(TripKind.HIN, d.window.kind)
         assertEquals("hin-moosegg", d.primary!!.conn.id)
-        // Grattenbrücke 06:37 gibt es im Fahrplan nicht → klar gekennzeichnet, mit Alternativen
         val gratten = d.rows.single { it.conn.id == "hin-gratten" }
-        assertEquals(Status.NOT_FOUND, gratten.status)
-        assertEquals("dort: 06:32 Bus 4056, 06:42 Bus 4055", gratten.note)
+        assertEquals(Status.ON_TIME, gratten.status)
+        assertEquals(at(6, 42), gratten.expected)
+        assertEquals("Bus 4055", gratten.lineLabel)
         // „Wechseln“ stellt die andere Fahrt nach vorn – und merkt es sich
         d = step(Controller.ACTION_SWITCH).display!!
         assertEquals("hin-gratten", d.primary!!.conn.id)
