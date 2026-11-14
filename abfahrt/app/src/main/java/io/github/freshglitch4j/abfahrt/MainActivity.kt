@@ -309,6 +309,10 @@ class MainActivity : Activity() {
 
     private fun renderLog() {
         content.addView(Ui.section(this, "Diagnose"))
+        content.addView(Ui.button(this, "Sperrbildschirm-Test (3 Min)") {
+            Notifier.postLockscreenTest(this)
+            toast("Drei Test-Benachrichtigungen A, B, C gesendet – jetzt Handy sperren und Display einschalten.")
+        })
         val row = Ui.rowLayout(this)
         row.addView(Ui.button(this, "Protokoll") {
             val log = store.readLog().lines().takeLast(200).joinToString("\n").ifBlank { "Noch keine Einträge." }

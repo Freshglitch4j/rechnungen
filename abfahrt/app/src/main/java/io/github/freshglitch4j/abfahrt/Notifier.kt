@@ -157,6 +157,34 @@ object Notifier {
         return b.build()
     }
 
+    /**
+     * Sperrbildschirm-Test: drei Varianten nebeneinander, um herauszufinden, welche
+     * Eigenschaft das Gerät dazu bringt, nur ein Symbol statt der Karte zu zeigen.
+     * Verschwinden nach drei Minuten von selbst.
+     */
+    fun postLockscreenTest(context: Context) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        fun post(id: Int, title: String, ongoing: Boolean, category: String?) {
+            val b = Notification.Builder(context, CHANNEL_LIVE)
+                .setSmallIcon(R.drawable.ic_stat_bus)
+                .setContentTitle(title)
+                .setContentText("16:46 → 16:51  +5 Min · in 11 Min")
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setOngoing(ongoing)
+                .setOnlyAlertOnce(true)
+                .setTimeoutAfter(180_000)
+            if (category != null) b.setCategory(category)
+            nm.notify(id, b.build())
+        }
+        post(ID_TEST_A, "Test A: normal", ongoing = false, category = null)
+        post(ID_TEST_B, "Test B: laufend", ongoing = true, category = null)
+        post(ID_TEST_C, "Test C: laufend + Status", ongoing = true, category = Notification.CATEGORY_STATUS)
+    }
+
+    const val ID_TEST_A = 91
+    const val ID_TEST_B = 92
+    const val ID_TEST_C = 93
+
     /** Schaltet die Standanzeige über dem Sperrbildschirm ein (Vollbild-Intent). */
     fun launchStand(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)

@@ -98,6 +98,18 @@ class LiveFlowTest {
         assertEquals(at(16, 17, 1), step.nextWake)
     }
 
+    @Test fun sperrbildschirmTestSendetDreiVarianten() {
+        Notifier.postLockscreenTest(ctx)
+        val nm = shadowOf(ctx.getSystemService(NotificationManager::class.java))
+        val a = nm.getNotification(Notifier.ID_TEST_A)
+        val b = nm.getNotification(Notifier.ID_TEST_B)
+        val c = nm.getNotification(Notifier.ID_TEST_C)
+        assertTrue(a.flags and Notification.FLAG_ONGOING_EVENT == 0)
+        assertTrue(b.flags and Notification.FLAG_ONGOING_EVENT != 0)
+        assertNull(b.category)
+        assertEquals(Notification.CATEGORY_STATUS, c.category)
+    }
+
     @Test fun standardmaessigNormaleBenachrichtigungOhneLiveAnforderung() {
         now = at(16, 39, 20)
         val n = Notifier.build(ctx, step().display)
