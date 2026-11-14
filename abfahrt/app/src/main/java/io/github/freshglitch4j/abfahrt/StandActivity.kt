@@ -34,7 +34,14 @@ class StandActivity : Activity() {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-        root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
+        root = FrameLayout(this).apply {
+            setBackgroundColor(0xFF000000.toInt())
+            // Gedimmt wie ein Always-On-Display; Tippen macht 15 Sekunden lang hell.
+            setOnClickListener {
+                brightUntil = System.currentTimeMillis() + 15_000
+                applyBrightness()
+            }
+        }
         setContentView(root)
     }
 
@@ -52,7 +59,17 @@ class StandActivity : Activity() {
         super.onStop()
     }
 
+    private var brightUntil = 0L
+
+    private fun applyBrightness() {
+        val bright = System.currentTimeMillis() < brightUntil
+        window.attributes = window.attributes.apply {
+            screenBrightness = if (bright) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else DIM_BRIGHTNESS
+        }
+    }
+
     private fun render() {
+        applyBrightness()
         val d = Live.display
         val now = Live.clock()
         root.removeAllViews()
@@ -77,7 +94,7 @@ class StandActivity : Activity() {
             col.addView(Ui.spacer(this, 18))
             col.addView(Ui.departures(this, d, now, 1.45f))
             col.addView(Ui.spacer(this, 22))
-            col.addView(Ui.text(this, Fmt.asOf(d) + " · Daten: Verkehrsauskunft Österreich (VAO)", 12f, Ui.FAINT))
+            col.addView(Ui.text(this, Fmt.asOf(d) + " · Daten: Verkehrsauskunft Österreich (VAO) · Tippen = hell", 12f, Ui.FAINT))
         }
 
         col.addView(Ui.spacer(this, 20))
@@ -105,5 +122,10 @@ class StandActivity : Activity() {
         col.addView(buttons)
 
         root.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+    }
+
+    companion object {
+        /** Displayhelligkeit der gedimmten Standanzeige (0 = dunkelste Stufe, 1 = voll). */
+        const val DIM_BRIGHTNESS = 0.05f
     }
 }
