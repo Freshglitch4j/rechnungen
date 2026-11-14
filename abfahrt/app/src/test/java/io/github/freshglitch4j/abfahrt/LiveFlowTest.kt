@@ -98,7 +98,17 @@ class LiveFlowTest {
         assertEquals(at(16, 17, 1), step.nextWake)
     }
 
+    @Test fun standardmaessigNormaleBenachrichtigungOhneLiveAnforderung() {
+        now = at(16, 39, 20)
+        val n = Notifier.build(ctx, step().display)
+        assertFalse(n.extras.getBoolean("android.requestPromotedOngoing"))
+        assertTrue(n.flags and Notification.FLAG_ONGOING_EVENT != 0)
+        assertEquals("Bus 760  16:46 → 16:51  +5 Min", n.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals(Notification.VISIBILITY_PUBLIC, n.visibility)
+    }
+
     @Test fun benachrichtigungZeigtPlanErwartetUndVerspaetung() {
+        store.settings = store.settings.copy(nowBar = true)
         now = at(16, 39, 20)
         val n = Notifier.build(ctx, step().display)
         val x = n.extras

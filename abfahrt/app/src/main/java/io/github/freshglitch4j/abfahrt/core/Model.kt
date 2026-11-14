@@ -80,6 +80,11 @@ data class Settings(
     val skipHolidays: Boolean = true,
     /** Standanzeige bei Beginn automatisch über dem Sperrbildschirm einschalten. */
     val autoStand: Boolean = false,
+    /**
+     * Als Android-Live-Benachrichtigung anfordern (Now Bar). Aus: normale laufende
+     * Benachrichtigung – Samsung zeigt sie am Sperrbildschirm als volle Karte.
+     */
+    val nowBar: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("connections", JSONArray(connections.map { it.toJson() }))
@@ -90,6 +95,7 @@ data class Settings(
         .put("pinned", JSONObject().also { p -> pinned.forEach { (k, v) -> p.put(k.name, v) } })
         .put("skipHolidays", skipHolidays)
         .put("autoStand", autoStand)
+        .put("nowBar", nowBar)
 
     companion object {
         fun fromJson(o: JSONObject): Settings {
@@ -109,6 +115,7 @@ data class Settings(
                 pinned = pinned,
                 skipHolidays = o.optBoolean("skipHolidays", true),
                 autoStand = o.optBoolean("autoStand", false),
+                nowBar = o.optBoolean("nowBar", false),
             )
         }
     }

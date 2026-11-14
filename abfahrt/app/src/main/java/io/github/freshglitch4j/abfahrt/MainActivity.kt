@@ -243,6 +243,15 @@ class MainActivity : Activity() {
             isChecked = s.autoStand
             setOnCheckedChangeListener { _, on -> save(store.settings.copy(autoStand = on)) }
         })
+        content.addView(Switch(this).apply {
+            text = "Als Live-Benachrichtigung (Now Bar) anfordern – aus: volle Karte am Sperrbildschirm"
+            isChecked = s.nowBar
+            setOnCheckedChangeListener { _, on ->
+                save(store.settings.copy(nowBar = on))
+                // Laufende Anzeige sofort in der neuen Form neu aufbauen
+                if (Live.display != null) LiveService.start(this@MainActivity, Controller.ACTION_TICK)
+            }
+        })
     }
 
     private fun renderSetup(s: Settings) {
@@ -270,12 +279,12 @@ class MainActivity : Activity() {
         item(getSystemService(AlarmManager::class.java).canScheduleExactAlarms(), "Exakte Wecker erlaubt (pünktlicher Beginn)") {
             open(Intent(Sys.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
         }
-        if (Build.VERSION.SDK_INT >= 36) {
+        if (Build.VERSION.SDK_INT >= 36 && s.nowBar) {
             item(nm.canPostPromotedNotifications(), "Live-Benachrichtigung erlaubt (Now Bar, Statusleiste)") {
                 open(Intent(Sys.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).putExtra(Sys.EXTRA_APP_PACKAGE, packageName))
             }
         }
-        Notifier.isPromotedNow(this)?.let { promoted ->
+        if (s.nowBar) Notifier.isPromotedNow(this)?.let { promoted ->
             item(promoted, if (promoted) "Wird gerade als Live-Benachrichtigung angezeigt" else "Läuft gerade als normale Benachrichtigung (nicht als Live-Benachrichtigung)", null)
         }
         if (s.autoStand) {

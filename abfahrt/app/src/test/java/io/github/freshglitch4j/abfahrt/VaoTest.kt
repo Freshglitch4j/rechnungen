@@ -130,7 +130,7 @@ class VaoTest {
     }
 
     @Test fun einstellungenAlsJson() {
-        val s = Settings(accessId = "abc", leadMinutes = 40, pinned = mapOf(TripKind.HIN to "hin-gratten"), autoStand = true, dailyLimit = 250, skipHolidays = false)
+        val s = Settings(accessId = "abc", leadMinutes = 40, pinned = mapOf(TripKind.HIN to "hin-gratten"), autoStand = true, nowBar = true, dailyLimit = 250, skipHolidays = false)
         assertEquals(s, Settings.fromJson(JSONObject(s.toJson().toString())))
         assertEquals(Settings(), Settings.fromJson(JSONObject("{}")))
     }

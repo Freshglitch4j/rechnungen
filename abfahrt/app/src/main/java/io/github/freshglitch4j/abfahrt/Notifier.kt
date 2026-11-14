@@ -86,6 +86,10 @@ object Notifier {
      * Variante gewählt, die das laufende System als geeignet einstuft.
      */
     fun build(context: Context, d: Display?): Notification {
+        // Samsung stellt Live-Benachrichtigungen fremder Apps nicht in jedem Fall in die
+        // Now Bar und zeigt sie dann am Sperrbildschirm nur als Symbol. Daher standardmäßig
+        // eine normale laufende Benachrichtigung, die als volle Karte erscheint.
+        if (!Store(context).settings.nowBar) return build(context, d, colorized = false, promote = false)
         val plain = build(context, d, colorized = false)
         if (Build.VERSION.SDK_INT < 36 || plain.hasPromotableCharacteristics()) return plain
         val colorized = build(context, d, colorized = true)
@@ -100,7 +104,7 @@ object Notifier {
         return active.notification.flags and Notification.FLAG_PROMOTED_ONGOING != 0
     }
 
-    fun build(context: Context, d: Display?, colorized: Boolean): Notification {
+    fun build(context: Context, d: Display?, colorized: Boolean, promote: Boolean = true): Notification {
         val b = Notification.Builder(context, CHANNEL_LIVE)
             .setColorized(colorized)
             .setSmallIcon(R.drawable.ic_stat_bus)
@@ -110,7 +114,7 @@ object Notifier {
             .setCategory(Notification.CATEGORY_STATUS)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(standIntent(context))
-        b.extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
+        if (promote) b.extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
 
         val p = d?.primary
         if (d == null || p == null) {
