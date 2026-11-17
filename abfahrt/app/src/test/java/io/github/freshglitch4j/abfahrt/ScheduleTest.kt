@@ -65,6 +65,19 @@ class ScheduleTest {
         assertEquals(LocalDateTime.of(2026, 11, 23, 6, 3), next.start)
     }
 
+    @Test fun verbrauchsschaetzung() {
+        val w = io.github.freshglitch4j.abfahrt.core.Budget.perWeekday(s)
+        println("Schätzung je Wochentag: $w")
+        // entspricht dem simulierten Tagesablauf (rund 60 an Mo–Do)
+        assertTrue(w.toString(), w[java.time.DayOfWeek.MONDAY]!! in 50..70)
+        assertTrue(w.toString(), w[java.time.DayOfWeek.FRIDAY]!! < w[java.time.DayOfWeek.MONDAY]!!)
+        assertEquals(0, w[java.time.DayOfWeek.SATURDAY])
+        assertEquals(0, w[java.time.DayOfWeek.SUNDAY])
+        // eine weitere Verbindung an anderer Haltestelle kostet spürbar mehr
+        val extra = s.connections.first { it.id == "heim-rex" }.copy(id = "x", stopId = "at:47:9999", time = LocalTime.of(17, 10))
+        assertTrue(io.github.freshglitch4j.abfahrt.core.Budget.estimate(s.copy(connections = s.connections + extra), mon) > w[java.time.DayOfWeek.MONDAY]!!)
+    }
+
     @Test fun ausgeschaltetHeisstKeineFenster() {
         assertNull(Schedule.nextStartAfter(LocalDateTime.of(2026, 11, 16, 5, 0), s.copy(active = false)))
     }

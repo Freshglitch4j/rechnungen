@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.freshglitch4j.abfahrt"
         minSdk = 34
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.1.3"
+        versionCode = 9
+        versionName = "1.2.0"
     }
 
     signingConfigs {

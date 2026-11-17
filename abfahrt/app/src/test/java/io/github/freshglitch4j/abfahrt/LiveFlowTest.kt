@@ -183,6 +183,11 @@ class LiveFlowTest {
         println("Abfragen an einem Montag (Hin- und Heimfahrt): ${vao.boardRequests}")
         assertTrue("Abfragen: ${vao.boardRequests}", vao.boardRequests <= 70)
         assertEquals(vao.boardRequests, store.usedToday(at(12, 0).toLocalDate()))
+        // die Schätzung trifft den durchgespielten Tag
+        val est = io.github.freshglitch4j.abfahrt.core.Budget.estimate(store.settings, at(12, 0).toLocalDate())
+        assertTrue("Schätzung $est, tatsächlich ${vao.boardRequests}", Math.abs(est - vao.boardRequests) <= 6)
+        // Verlauf: am Folgetag als gestriger Verbrauch sichtbar
+        assertEquals(listOf(at(12, 0).toLocalDate() to vao.boardRequests), store.history(at(12, 0, day = 17).toLocalDate()))
     }
 
     @Test fun morgensStehtDerGewaehlteEinstiegVorn() {

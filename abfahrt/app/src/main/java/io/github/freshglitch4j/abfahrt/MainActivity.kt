@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import io.github.freshglitch4j.abfahrt.core.Budget
 import io.github.freshglitch4j.abfahrt.core.Connection
 import io.github.freshglitch4j.abfahrt.core.Engine
 import io.github.freshglitch4j.abfahrt.core.Fmt
@@ -209,10 +210,32 @@ class MainActivity : Activity() {
                         "Echtzeitdaten kommen von der offiziellen Schnittstelle der Verkehrsauskunft Österreich. " +
                         "Den kostenlosen persönlichen Schlüssel („VAO Start“) gibt es auf verkehrsauskunft.at/start: " +
                         "Vertrag ausfüllen, unterschreiben und an start@verkehrsauskunft.at senden."
-                else "Quelle: Verkehrsauskunft Österreich (VAO Start). Heute verbraucht: ${store.usedToday()} von ${s.dailyLimit} Abfragen.",
+                else "Quelle: Verkehrsauskunft Österreich (VAO Start).",
                 14f, Ui.DIM,
             )
         )
+        if (s.accessId.isNotBlank()) {
+            val used = store.usedToday()
+            content.addView(Ui.text(this, "Heute: $used von ${s.dailyLimit} Abfragen verbraucht · noch ${maxOf(0, s.dailyLimit - used)} frei", 15f, Ui.WHITE, true).apply {
+                setPadding(0, Ui.dp(this@MainActivity, 8), 0, 0)
+            })
+        }
+        val estimate = Budget.perWeekday(s)
+        val busy = estimate.filterValues { it > 0 }
+        content.addView(Ui.text(
+            this,
+            if (busy.isEmpty()) "Voraussichtlicher Verbrauch: keine Verbindungen aktiv."
+            else "Voraussichtlich pro Tag (alle pünktlich): " + busy.entries.joinToString(" · ") { (d, n) ->
+                d.getDisplayName(TextStyle.SHORT, Locale.GERMAN).take(2) + " " + n
+            } + ". Verspätungen kosten etwa 1 Abfrage je Minute, „Aktualisieren“ 1 je Haltestelle, „Verbindungen testen“ 1 je Verbindung.",
+            13f, if ((busy.values.maxOrNull() ?: 0) > s.dailyLimit * 0.8) Notifier.AMBER else Ui.DIM,
+        ))
+        val history = store.history()
+        if (history.isNotEmpty()) {
+            content.addView(Ui.text(this, "Tatsächlich: " + history.joinToString(" · ") { (d, n) ->
+                d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN).take(2) + " " + "%02d.%02d.".format(d.dayOfMonth, d.monthValue) + " " + n
+            }, 13f, Ui.DIM))
+        }
         val key = EditText(this).apply {
             hint = "VAO-Zugangsschlüssel (accessId)"
             setText(s.accessId)

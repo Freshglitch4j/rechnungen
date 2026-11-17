@@ -29,7 +29,22 @@ class Store(context: Context) : VersionCache {
         if (prefs.getString("quotaDate", "") == today.toString()) prefs.getInt("quotaUsed", 0) else 0
 
     fun countRequest(today: LocalDate = LocalDate.now(ZONE)) {
-        prefs.edit().putString("quotaDate", today.toString()).putInt("quotaUsed", usedToday(today) + 1).apply()
+        val used = usedToday(today) + 1
+        val history = historyJson().put(today.toString(), used)
+        // nur die letzten 14 Tage behalten
+        history.keys().asSequence().toList().filter { it < today.minusDays(14).toString() }.forEach { history.remove(it) }
+        prefs.edit().putString("quotaDate", today.toString()).putInt("quotaUsed", used)
+            .putString("quotaHistory", history.toString()).apply()
+    }
+
+    private fun historyJson(): JSONObject =
+        try { JSONObject(prefs.getString("quotaHistory", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+
+    /** Tatsächlicher Verbrauch der letzten Tage (ohne heute), neueste zuerst; nur Tage mit Abfragen. */
+    fun history(today: LocalDate = LocalDate.now(ZONE), days: Int = 7): List<Pair<LocalDate, Int>> {
+        val h = historyJson()
+        return (1..days).map { today.minusDays(it.toLong()) }
+            .mapNotNull { d -> h.optInt(d.toString(), 0).takeIf { it > 0 }?.let { d to it } }
     }
 
     /** Der Server hat das Kontingent als erschöpft gemeldet. */

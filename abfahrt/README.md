@@ -55,7 +55,7 @@ Alle Richtung Wörgl Hbf (`at:47:1170`).
 
 ## Einrichtung am Handy
 
-1. `Abfahrt-1.1.3.apk` installieren (Installation aus dieser Quelle erlauben).
+1. `Abfahrt-1.2.0.apk` installieren (Installation aus dieser Quelle erlauben).
 2. App einmal öffnen, Benachrichtigungen erlauben und unter *Einrichtung* die
    mit „!“ markierten Punkte beheben (v. a. Akku: „Nicht eingeschränkt“).
 3. Galaxy-Einstellungen:
