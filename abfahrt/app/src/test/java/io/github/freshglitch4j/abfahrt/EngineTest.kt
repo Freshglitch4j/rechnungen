@@ -96,6 +96,10 @@ class EngineTest {
         assertTrue(Engine.lineMatches("rex", dep(1, 1, name = "REX 5333", line = "REX 2")))
         assertTrue(Engine.lineMatches("REX 2", dep(1, 1, name = "REX 5333", line = "REX 2")))
         assertTrue(Engine.lineMatches("", dep(1, 1)))
+        // So liefert die VAO den Zug tatsächlich: „REX2" ohne Leerzeichen
+        assertTrue(Engine.lineMatches("REX", dep(1, 1, name = "REX2", line = "")))
+        assertTrue(Engine.lineMatches("REX 2", dep(1, 1, name = "REX2", line = "")))
+        assertFalse(Engine.lineMatches("REX 1", dep(1, 1, name = "REX2", line = "")))
     }
 
     // ------------------------------------------------------------ Anzeige

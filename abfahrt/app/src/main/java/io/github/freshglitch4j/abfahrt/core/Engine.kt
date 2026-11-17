@@ -81,8 +81,11 @@ object Engine {
 
     // ---------------------------------------------------------------- Zuordnung
 
+    /** Wörter einer Linienbezeichnung; „REX2" zählt wie „REX 2". */
     private fun tokens(s: String): List<String> =
-        s.lowercase().split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.isNotEmpty() }
+        s.lowercase()
+            .replace(Regex("(?<=\\p{L})(?=\\p{Nd})|(?<=\\p{Nd})(?=\\p{L})"), " ")
+            .split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.isNotEmpty() }
 
     fun lineMatches(filter: String, dep: Departure): Boolean {
         val want = tokens(filter)
