@@ -250,7 +250,8 @@ class LiveFlowTest {
         now = at(16, 16)
         var s = step()
         while (s.display != null && now.isBefore(at(17, 10))) { now = s.nextWake!!; s = step() }
-        assertTrue("Abfragen: ${vao.boardRequests}", vao.boardRequests <= 10)
+        // je Versuch beide Schnittstellenversionen, danach erst wieder nach 15 Minuten
+        assertTrue("Abfragen: ${vao.boardRequests}", vao.boardRequests <= 16)
     }
 
     @Test fun erschoepftesKontingentStopptAbfragen() {

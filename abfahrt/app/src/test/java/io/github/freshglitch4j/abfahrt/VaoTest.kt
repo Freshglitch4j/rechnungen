@@ -96,6 +96,25 @@ class VaoTest {
         assertEquals("v1.13.0", cache.get()!!.first)
     }
 
+    @Test fun schluesselNurFuerAeltereVersionWirdErkannt() {
+        val vao = FakeVao().apply { keyOnlyFor = "v1.11.0"; boards["x"] = listOf(FakeDep("16:46", 2)) }
+        val cache = MemoryVersionCache()
+        val client = VaoClient(vao, "gueltig", cache)
+        val r = client.departureBoard("x", from, 60, null) as VaoResult.Ok
+        assertEquals(2, r.value.departures.single().delayMinutes)
+        assertEquals("v1.11.0", cache.get()!!.first)
+        // danach direkt mit der passenden Version
+        val before = vao.requests.size
+        assertTrue(client.departureBoard("x", from, 60, null) is VaoResult.Ok)
+        assertEquals(before + 1, vao.requests.size)
+        assertTrue(vao.requests.last().contains("/v1.11.0/"))
+    }
+
+    @Test fun falscherSchluesselBleibtAbgelehnt() {
+        val r = VaoClient(FakeVao(), "falsch", MemoryVersionCache()).departureBoard("x", from, 60, null) as VaoResult.Fail
+        assertEquals(FailKind.AUTH, r.kind)
+    }
+
     @Test fun fehlerbilder() {
         val vao = FakeVao()
         val cache = MemoryVersionCache()
@@ -125,6 +144,7 @@ class VaoTest {
     }
 
     @Test fun neuesteVersion() {
+        assertEquals(listOf("v1.12.0", "v1.11.0", "v1.9.3"), VaoClient.allVersions("""[{"serviceVersion":"v1.11.0"},{"serviceVersion":"v1.12.0"},{"serviceVersion":"v1.9.3"}]"""))
         assertEquals("v1.12.0", VaoClient.newestVersion("""[{"serviceVersion":"v1.11.0"},{"serviceVersion":"v1.12.0"},{"serviceVersion":"v1.9.3"}]"""))
         assertNull(VaoClient.newestVersion("kaputt"))
     }

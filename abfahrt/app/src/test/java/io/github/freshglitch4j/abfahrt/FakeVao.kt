@@ -25,6 +25,8 @@ class FakeVao : Http {
     var errorCode = ""
     var directionFilterSupported = true
     var validVersion = "v1.12.0"
+    /** Gesetzt: der Schlüssel gilt nur für diese Version. */
+    var keyOnlyFor: String? = null
     var date = "2026-11-16"
 
     val boardRequests: Int get() = requests.count { it.contains("/departureBoard") }
@@ -44,9 +46,9 @@ class FakeVao : Http {
         if (url.endsWith("/vao/restproxy")) {
             return HttpResponse(200, """[{"serviceVersion":"v1.11.0","Decommission":"30.09.2027"},{"serviceVersion":"$validVersion","Decommission":"30.08.2027"}]""")
         }
-        if (!url.contains("/$validVersion/")) return HttpResponse(404, "")
+        val ver = listOf("v1.11.0", validVersion).firstOrNull { url.contains("/$it/") } ?: return HttpResponse(404, "")
         val p = params(url)
-        if (p["accessId"] != "gueltig") {
+        if (p["accessId"] != "gueltig" || (keyOnlyFor != null && keyOnlyFor != ver)) {
             return HttpResponse(401, """{"errorCode":"API_AUTH","errorText":"access denied for ${p["accessId"]} on departureBoard"}""")
         }
         if (errorStatus != 0) return HttpResponse(errorStatus, if (errorCode.isEmpty()) "" else """{"errorCode":"$errorCode","errorText":"Testfehler"}""")

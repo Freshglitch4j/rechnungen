@@ -124,6 +124,16 @@ class VaoClient(
             return best
         }
 
+        /** Alle Versionen der Serverliste, neueste zuerst. */
+        fun allVersions(json: String): List<String> {
+            val arr = try { JSONArray(json) } catch (e: Exception) { return emptyList() }
+            return (0 until arr.length())
+                .map { arr.optJSONObject(it)?.optString("serviceVersion").orEmpty() }
+                .filter { Regex("""v\d+(\.\d+)*""").matches(it) }
+                .distinct()
+                .sortedWith { a, b -> compareVersions(b, a) }
+        }
+
         fun compareVersions(a: String, b: String): Int {
             val pa = a.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
             val pb = b.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
@@ -288,33 +298,53 @@ class VaoClient(
 
     private fun <T> callRaw(service: String, params: List<Pair<String, String>>, parse: (String) -> VaoResult<T>): VaoResult<T> {
         if (accessId.isBlank()) return VaoResult.Fail(FailKind.NO_KEY, "Kein VAO-Zugangsschlüssel hinterlegt")
-        var attempt = 0
-        while (true) {
-            val ver = version()
-            val query = (listOf("accessId" to accessId, "format" to "json", "lang" to "de", "requestId" to "abfahrt") + params)
-                .joinToString("&") { (k, v) -> "$k=${enc(v)}" }
-            val resp = try {
-                http.get("$base/$ver/$service?$query")
-            } catch (e: IOException) {
-                return VaoResult.Fail(FailKind.NETWORK, e.message ?: e.javaClass.simpleName)
-            }
-            if (resp.status == 404 && attempt == 0) {
+        val query = (listOf("accessId" to accessId, "format" to "json", "lang" to "de", "requestId" to "abfahrt") + params)
+            .joinToString("&") { (k, v) -> "$k=${enc(v)}" }
+        var ver = version()
+        var result = try {
+            once(ver, service, query, parse) ?: run {
                 // Version abgeschaltet → Liste neu laden und einmal wiederholen.
                 versions.clear()
-                attempt++
-                continue
+                ver = version()
+                once(ver, service, query, parse)
+                    ?: VaoResult.Fail(FailKind.SERVER, "Schnittstellenversion $ver nicht verfügbar")
             }
-            onCountedRequest()
-            if (resp.status in 200..299) return parse(resp.body)
-            val root = try { JSONObject(resp.body) } catch (e: Exception) { null }
-            if (root != null && root.optString("errorCode").isNotEmpty()) {
-                return failFor(root.optString("errorCode"), root.optString("errorText"), resp.status)
-            }
-            // Fehler kann auch als XML kommen.
-            val code = Regex("""errorCode="([^"]*)"""").find(resp.body)?.groupValues?.get(1).orEmpty()
-            val text = Regex("""errorText="([^"]*)"""").find(resp.body)?.groupValues?.get(1).orEmpty()
-            return failFor(code, text, resp.status)
+        } catch (e: IOException) {
+            return VaoResult.Fail(FailKind.NETWORK, e.message ?: e.javaClass.simpleName)
         }
+        // Ein Schlüssel kann für eine bestimmte Version ausgestellt sein (z. B. v1.11.0):
+        // bei Ablehnung die übrigen Versionen der Serverliste probieren und die passende merken.
+        if (result is VaoResult.Fail && result.kind == FailKind.AUTH) {
+            val others = try {
+                val r = http.get(base)
+                if (r.status == 200) allVersions(r.body) else emptyList()
+            } catch (e: IOException) {
+                emptyList()
+            }.filter { it != ver }
+            for (other in others) {
+                val r = try { once(other, service, query, parse) } catch (e: IOException) { null } ?: continue
+                if (r is VaoResult.Fail && r.kind == FailKind.AUTH) continue
+                versions.put(other, nowMillis())
+                return r
+            }
+        }
+        return result
+    }
+
+    /** Eine Anfrage an eine bestimmte Version; null = Version gibt es nicht (404). */
+    private fun <T> once(ver: String, service: String, query: String, parse: (String) -> VaoResult<T>): VaoResult<T>? {
+        val resp = http.get("$base/$ver/$service?$query")
+        if (resp.status == 404) return null
+        onCountedRequest()
+        if (resp.status in 200..299) return parse(resp.body)
+        val root = try { JSONObject(resp.body) } catch (e: Exception) { null }
+        if (root != null && root.optString("errorCode").isNotEmpty()) {
+            return failFor(root.optString("errorCode"), root.optString("errorText"), resp.status)
+        }
+        // Fehler kann auch als XML kommen.
+        val code = Regex("""errorCode="([^"]*)"""").find(resp.body)?.groupValues?.get(1).orEmpty()
+        val text = Regex("""errorText="([^"]*)"""").find(resp.body)?.groupValues?.get(1).orEmpty()
+        return failFor(code, text, resp.status)
     }
 
     /**
