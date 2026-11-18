@@ -118,7 +118,7 @@ class StandActivity : Activity() {
             setPadding(shift, Ui.dp(this@StandActivity, 48) + shift, 0, 0)
         })
         // Darunter klein: wie aktuell die Daten sind.
-        if (d != null && !d.demo) page.addView(Ui.text(this, updatedText(d.asOf, now), 15f, Ui.DIM).apply {
+        if (d != null) page.addView(Ui.text(this, updatedText(d.asOf, now), 15f, Ui.DIM).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(shift, Ui.dp(this@StandActivity, 2), 0, 0)
         })

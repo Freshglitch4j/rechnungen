@@ -20,6 +20,7 @@ import io.github.freshglitch4j.abfahrt.core.VaoResult
 import io.github.freshglitch4j.abfahrt.core.Window
 import io.github.freshglitch4j.abfahrt.core.ZONE
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.CopyOnWriteArraySet
@@ -232,9 +233,11 @@ object Controller {
             name = c.label, line = "", category = "", direction = "Wörgl Hbf", cancelled = false,
             track = null, rtTrack = null, stopName = c.stopName,
         )
+        // Stand wie im Betrieb: alle zwei Minuten erneuert
+        val asOf = base.plusMinutes(Duration.between(base, now).toMinutes() / 2 * 2)
         val states = mapOf(
-            bus.id to ConnState(now, now, Match.Found(dep(bus, 5), false)),
-            rex.id to ConnState(now, now, Match.Found(dep(rex, 0), false)),
+            bus.id to ConnState(asOf, asOf, Match.Found(dep(bus, 5), false)),
+            rex.id to ConnState(asOf, asOf, Match.Found(dep(rex, 0), false)),
         )
         val display = Engine.display(w, states, s.copy(pinned = emptyMap(), accessId = "demo"), now, 100, demo = true)
         Live.publish(display)
