@@ -39,13 +39,22 @@ object Ui {
      * „16:46 → 16:51“: die Planzeit gedämpft, die erwartete Abfahrt hell und fett –
      * so ist auf einen Blick klar, welche Zeit gilt. Ohne Echtzeit steht nur die Planzeit da.
      */
-    fun times(r: Row): CharSequence {
+    fun times(r: Row, expectedColor: Int = WHITE): CharSequence {
         val expected = r.expected ?: return Fmt.time(r.planned)
         val plan = Fmt.time(r.planned) + " → "
         return SpannableString(plan + Fmt.time(expected)).apply {
             setSpan(ForegroundColorSpan(DIM), 0, plan.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(RelativeSizeSpan(0.72f), 0, plan.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(RelativeSizeSpan(0.62f), 0, plan.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             setSpan(StyleSpan(Typeface.BOLD), plan.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(expectedColor), plan.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    /** Dünne Trennlinie. */
+    fun divider(c: Context, marginDp: Int): View = View(c).apply {
+        setBackgroundColor(0xFF3A3A3A.toInt())
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 1)).apply {
+            topMargin = dp(c, marginDp); bottomMargin = dp(c, marginDp)
         }
     }
 
@@ -77,25 +86,26 @@ object Ui {
      */
     fun departures(c: Context, d: Display, now: LocalDateTime, scale: Float = 1f): LinearLayout {
         val col = column(c)
-        val rows = listOfNotNull(d.primary) + d.others
-        for ((i, r) in rows.withIndex()) {
-            if (i > 0) col.addView(spacer(c, (18 * scale).toInt()))
-            col.addView(departure(c, r, now, scale))
+        // Die nächste Fahrt groß, weitere kleiner und durch eine Linie abgetrennt.
+        d.primary?.let { col.addView(departure(c, it, now, scale * 1.15f)) }
+        for ((i, r) in d.others.withIndex()) {
+            col.addView(if (i == 0) divider(c, (16 * scale).toInt()) else spacer(c, (12 * scale).toInt()))
+            col.addView(departure(c, r, now, scale * 0.72f).apply { alpha = 0.85f })
         }
         return col
     }
 
     private fun departure(c: Context, r: Row, now: LocalDateTime, scale: Float): LinearLayout {
         val col = column(c)
-        val alpha = if (r.gone) 0.45f else 1f
-        col.alpha = alpha
+        if (r.gone) col.alpha = 0.45f
+        val color = Notifier.color(r)
         col.addView(text(c, "${r.lineLabel} · ${Fmt.where(r)}", 15f * scale, DIM))
-        col.addView(text(c, times(r), 34f * scale, if (r.hasRealtime) WHITE else DIM, !r.hasRealtime).apply { fontFeatureSettings = "tnum" })
+        col.addView(text(c, times(r, color), 38f * scale, if (r.hasRealtime) WHITE else DIM, !r.hasRealtime).apply { fontFeatureSettings = "tnum" })
         // Status in Farbe, dahinter die verbleibende Zeit – als ein Text, damit er sauber umbricht.
         val status = r.statusText.uppercase()
         val cd = Fmt.countdown(r, now)
         val line = SpannableString(if (cd.isEmpty()) status else "$status   $cd").apply {
-            setSpan(ForegroundColorSpan(Notifier.color(r.status)), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(color), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             setSpan(StyleSpan(Typeface.BOLD), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         col.addView(text(c, line, 17f * scale, WHITE))

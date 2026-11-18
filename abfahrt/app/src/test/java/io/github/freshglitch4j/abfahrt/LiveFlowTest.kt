@@ -98,6 +98,31 @@ class LiveFlowTest {
         assertEquals(at(16, 17, 1), step.nextWake)
     }
 
+    @Test fun farbeNachVerspaetung() {
+        fun colorFor(delay: Int?, cancelled: Boolean = false): Int {
+            vao.boards["at:47:64459"] = listOf(FakeDep("16:46", delay, cancelled = cancelled))
+            Live.reset(); Live.http = vao; Live.clock = { now }
+            now = at(16, 40)
+            return Notifier.color(step().display!!.rows.single { it.conn.id == "heim-bus" })
+        }
+        assertEquals(Notifier.GREEN, colorFor(0))
+        assertEquals(Notifier.GREEN, colorFor(-1))
+        assertEquals(Notifier.YELLOW, colorFor(1))
+        assertEquals(Notifier.YELLOW, colorFor(3))
+        assertEquals(Notifier.RED, colorFor(4))
+        assertEquals(Notifier.RED, colorFor(null, cancelled = true))
+        assertEquals(Notifier.GREY, colorFor(null))
+    }
+
+    @Test fun abgefahreneFahrtWirdNichtMehrAlsAlternativeGezeigt() {
+        vao.boards["at:47:1172"] = listOf(FakeDep("16:59", 8, "REX2", "", "Zell am See"))
+        now = at(16, 40); step()
+        now = at(17, 4)
+        val d = step().display!!
+        assertEquals("heim-rex", d.primary!!.conn.id)
+        assertTrue(d.others.isEmpty())
+    }
+
     @Test fun sperrbildschirmTestSendetDreiVarianten() {
         Notifier.postLockscreenTest(ctx)
         val nm = shadowOf(ctx.getSystemService(NotificationManager::class.java))

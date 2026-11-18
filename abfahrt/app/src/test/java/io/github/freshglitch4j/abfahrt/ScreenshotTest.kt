@@ -67,6 +67,24 @@ class ScreenshotTest {
         shootActivity(StandActivity::class.java, "stand-heimfahrt")
     }
 
+    @Test fun standanzeigeVerspaeteterZug() {
+        // wie im Bericht: Bus mit +2 schon weg, Zug +8
+        (Live.http as FakeVao).boards["at:47:64459"] = listOf(FakeDep("16:46", 2))
+        (Live.http as FakeVao).boards["at:47:1172"] = listOf(FakeDep("16:59", 8, "REX2", "", "Zell am See"))
+        now = LocalDateTime.of(2026, 11, 16, 16, 40)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        now = LocalDateTime.of(2026, 11, 16, 17, 4, 10)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        shootActivity(StandActivity::class.java, "stand-verspaetet")
+    }
+
+    @Test fun standanzeigeGelb() {
+        (Live.http as FakeVao).boards["at:47:64459"] = listOf(FakeDep("16:46", 2))
+        now = LocalDateTime.of(2026, 11, 16, 16, 38, 10)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        shootActivity(StandActivity::class.java, "stand-gelb")
+    }
+
     @Test fun standanzeigeHinfahrt() {
         now = LocalDateTime.of(2026, 11, 16, 6, 21, 5)
         Controller.step(ctx, Controller.ACTION_TICK)

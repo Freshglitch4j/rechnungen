@@ -55,7 +55,8 @@ data class Display(
     val demo: Boolean = false,
 ) {
     val primary: Row? get() = rows.firstOrNull { it.primary } ?: rows.firstOrNull()
-    val others: List<Row> get() = rows.filter { it !== primary }
+    /** Weitere, noch nicht abgefahrene Fahrten. */
+    val others: List<Row> get() = rows.filter { it !== primary && !it.gone }
     /** Jüngster Datenstand über alle Zeilen. */
     val asOf: LocalDateTime? get() = rows.mapNotNull { it.asOf }.maxOrNull()
 }

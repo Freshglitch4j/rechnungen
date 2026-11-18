@@ -58,11 +58,11 @@ class DepartureWidget : AppWidgetProvider() {
                 for ((i, r) in rows.take(ROWS.size).withIndex()) {
                     v.setViewVisibility(ROWS[i], View.VISIBLE)
                     v.setTextViewText(LABELS[i], r.lineLabel)
-                    v.setTextViewText(TIMES[i], Ui.times(r))
+                    v.setTextViewText(TIMES[i], Ui.times(r, Notifier.color(r)))
                     v.setTextColor(TIMES[i], if (r.hasRealtime) Ui.WHITE else Ui.DIM)
                     v.setTextViewText(SUBS[i], listOf(Fmt.countdown(r, d.now), r.conn.stopName).filter { it.isNotEmpty() }.joinToString(" · "))
                     v.setTextViewText(STATUS[i], r.statusText)
-                    v.setTextColor(STATUS[i], Notifier.color(r.status))
+                    v.setTextColor(STATUS[i], Notifier.color(r))
                 }
                 return v
             }

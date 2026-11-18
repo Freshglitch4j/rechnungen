@@ -29,11 +29,18 @@ object Notifier {
     const val RED = 0xFFFF5252.toInt()
     const val GREY = 0xFF9E9E9E.toInt()
 
-    fun color(status: Status): Int = when (status) {
-        Status.ON_TIME, Status.EARLY -> GREEN
-        Status.DELAYED -> AMBER
-        Status.CANCELLED -> RED
-        else -> GREY
+    const val YELLOW = 0xFFFFD600.toInt()
+
+    /** Bis zu so vielen Minuten Verspätung gelb, darüber rot. */
+    const val YELLOW_MAX_DELAY = 3
+
+    /** Farbe nach Verspätung: pünktlich/früher grün, bis 3 Min gelb, mehr rot, Ausfall rot, ohne Echtzeit grau. */
+    fun color(r: Row): Int = when {
+        r.status == Status.CANCELLED -> RED
+        r.expected == null || r.delayMin == null -> GREY
+        r.delayMin <= 0 -> GREEN
+        r.delayMin <= YELLOW_MAX_DELAY -> YELLOW
+        else -> RED
     }
 
     fun createChannels(context: Context) {
@@ -137,7 +144,7 @@ object Notifier {
             .setContentText(text)
             .setSubText(sub)
             .setStyle(Notification.BigTextStyle().bigText(big))
-            .setColor(color(p.status))
+            .setColor(color(p))
             // Sekundengenauer Countdown im Kopf der Benachrichtigung – läuft ohne Zutun der App.
             .setWhen(p.effective.atZone(ZONE).toInstant().toEpochMilli())
             .setShowWhen(p.status != Status.CANCELLED)

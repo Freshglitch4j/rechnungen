@@ -76,7 +76,7 @@ class StandActivity : Activity() {
         val col = Ui.column(this)
         // Inhalt wandert minütlich um ein paar Pixel – schont das OLED-Display.
         val shift = (now.minute % 5) * Ui.dp(this, 6)
-        col.setPadding(Ui.dp(this, 24) + shift, Ui.dp(this, 20) + shift, Ui.dp(this, 24), Ui.dp(this, 20))
+        col.setPadding(Ui.dp(this, 24) + shift, Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 20))
 
         if (d == null) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -89,10 +89,9 @@ class StandActivity : Activity() {
             }
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            val head = (if (d.demo) "DEMO – ERFUNDENE WERTE" else d.window.kind.title.uppercase()) + "  ·  " + Fmt.time(now)
-            col.addView(Ui.text(this, head, 14f, Ui.DIM, true).apply { letterSpacing = 0.1f })
-            col.addView(Ui.spacer(this, 18))
-            col.addView(Ui.departures(this, d, now, 1.45f))
+            if (d.demo) col.addView(Ui.text(this, "DEMO – ERFUNDENE WERTE", 13f, Notifier.YELLOW, true).apply { letterSpacing = 0.1f })
+            col.addView(Ui.spacer(this, 10))
+            col.addView(Ui.departures(this, d, now, 1.35f))
             col.addView(Ui.spacer(this, 22))
             col.addView(Ui.text(this, Fmt.asOf(d) + " · Daten: Verkehrsauskunft Österreich (VAO) · Tippen = hell", 12f, Ui.FAINT))
         }
@@ -121,7 +120,20 @@ class StandActivity : Activity() {
         add("Schließen") { finish() }
         col.addView(buttons)
 
-        root.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        // Aktuelle Uhrzeit groß, oben mittig, durch eine Linie von den Abfahrten getrennt.
+        val page = Ui.column(this)
+        page.addView(Ui.text(this, Fmt.time(now), 64f, Ui.WHITE, true).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            fontFeatureSettings = "tnum"
+            setPadding(shift, Ui.dp(this@StandActivity, 48) + shift, 0, 0)
+        })
+        page.addView(Ui.divider(this, 22).apply {
+            (layoutParams as LinearLayout.LayoutParams).apply {
+                leftMargin = Ui.dp(this@StandActivity, 24); rightMargin = Ui.dp(this@StandActivity, 24)
+            }
+        })
+        page.addView(col)
+        root.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
     }
 
     companion object {
