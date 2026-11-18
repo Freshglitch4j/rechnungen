@@ -78,6 +78,20 @@ class ScreenshotTest {
         shootActivity(StandActivity::class.java, "stand-verspaetet")
     }
 
+    @Test fun standanzeigeAusfall() {
+        (Live.http as FakeVao).boards["at:47:64459"] = listOf(FakeDep("16:46", null, cancelled = true))
+        now = LocalDateTime.of(2026, 11, 16, 16, 38, 10)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        now = LocalDateTime.of(2026, 11, 16, 16, 41, 30)
+        shootActivity(StandActivity::class.java, "stand-ausfall")
+    }
+
+    @Test fun aktualisiertText() {
+        val t = LocalDateTime.of(2026, 11, 16, 16, 40)
+        org.junit.Assert.assertEquals("gerade aktualisiert", StandActivity.updatedText(t, t.plusSeconds(50)))
+        org.junit.Assert.assertEquals("aktualisiert vor 3 Min", StandActivity.updatedText(t, t.plusMinutes(3)))
+    }
+
     @Test fun standanzeigeGelb() {
         (Live.http as FakeVao).boards["at:47:64459"] = listOf(FakeDep("16:46", 2))
         now = LocalDateTime.of(2026, 11, 16, 16, 38, 10)

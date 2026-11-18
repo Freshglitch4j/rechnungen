@@ -30,13 +30,14 @@ object Notifier {
     const val GREY = 0xFF9E9E9E.toInt()
 
     const val YELLOW = 0xFFFFD600.toInt()
+    const val PURPLE = 0xFFC060FF.toInt()
 
     /** Bis zu so vielen Minuten Verspätung gelb, darüber rot. */
     const val YELLOW_MAX_DELAY = 3
 
-    /** Farbe nach Verspätung: pünktlich/früher grün, bis 3 Min gelb, mehr rot, Ausfall rot, ohne Echtzeit grau. */
+    /** Farbe nach Verspätung: pünktlich/früher grün, bis 3 Min gelb, mehr rot, Ausfall lila, ohne Echtzeit grau. */
     fun color(r: Row): Int = when {
-        r.status == Status.CANCELLED -> RED
+        r.status == Status.CANCELLED -> PURPLE
         r.expected == null || r.delayMin == null -> GREY
         r.delayMin <= 0 -> GREEN
         r.delayMin <= YELLOW_MAX_DELAY -> YELLOW

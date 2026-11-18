@@ -91,9 +91,7 @@ class StandActivity : Activity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (d.demo) col.addView(Ui.text(this, "DEMO – ERFUNDENE WERTE", 13f, Notifier.YELLOW, true).apply { letterSpacing = 0.1f })
             col.addView(Ui.spacer(this, 10))
-            col.addView(Ui.departures(this, d, now, 1.35f))
-            col.addView(Ui.spacer(this, 22))
-            col.addView(Ui.text(this, Fmt.asOf(d) + " · Daten: Verkehrsauskunft Österreich (VAO) · Tippen = hell", 12f, Ui.FAINT))
+            col.addView(Ui.departures(this, d, now, 1.35f, countdown = false))
         }
 
         col.addView(Ui.spacer(this, 20))
@@ -108,15 +106,7 @@ class StandActivity : Activity() {
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
         }
-        if (d != null) {
-            add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
-            if (d.rows.count { !it.gone } > 1) add("Wechseln") { LiveService.start(this, Controller.ACTION_SWITCH) }
-        }
-        add("App") {
-            getSystemService(KeyguardManager::class.java).requestDismissKeyguard(this, null)
-            startActivity(Intent(this, MainActivity::class.java))
-            finish()
-        }
+        if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
         add("Schließen") { finish() }
         col.addView(buttons)
 
@@ -126,6 +116,11 @@ class StandActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             fontFeatureSettings = "tnum"
             setPadding(shift, Ui.dp(this@StandActivity, 48) + shift, 0, 0)
+        })
+        // Darunter klein: wie aktuell die Daten sind.
+        if (d != null && !d.demo) page.addView(Ui.text(this, updatedText(d.asOf, now), 15f, Ui.DIM).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(shift, Ui.dp(this@StandActivity, 2), 0, 0)
         })
         page.addView(Ui.divider(this, 22).apply {
             (layoutParams as LinearLayout.LayoutParams).apply {
@@ -137,6 +132,17 @@ class StandActivity : Activity() {
     }
 
     companion object {
+        /** „gerade aktualisiert" bzw. „aktualisiert vor 3 Min". */
+        fun updatedText(asOf: java.time.LocalDateTime?, now: java.time.LocalDateTime): String {
+            if (asOf == null) return "noch nicht aktualisiert"
+            val min = java.time.Duration.between(asOf, now).toMinutes()
+            return when {
+                min < 1 -> "gerade aktualisiert"
+                min < 60 -> "aktualisiert vor $min Min"
+                else -> "aktualisiert um ${Fmt.time(asOf)}"
+            }
+        }
+
         /** Displayhelligkeit der gedimmten Standanzeige (0 = dunkelste Stufe, 1 = voll). */
         const val DIM_BRIGHTNESS = 0.05f
     }

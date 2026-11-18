@@ -110,7 +110,7 @@ class LiveFlowTest {
         assertEquals(Notifier.YELLOW, colorFor(1))
         assertEquals(Notifier.YELLOW, colorFor(3))
         assertEquals(Notifier.RED, colorFor(4))
-        assertEquals(Notifier.RED, colorFor(null, cancelled = true))
+        assertEquals(Notifier.PURPLE, colorFor(null, cancelled = true))
         assertEquals(Notifier.GREY, colorFor(null))
     }
 
