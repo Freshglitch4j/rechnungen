@@ -234,6 +234,7 @@ class LiveFlowTest {
         now = at(16, 20)
         assertNotNull(step().display)
         assertNull(step(Controller.ACTION_DISMISS).display)
+        assertEquals(1, store.dismissedOn(now.toLocalDate()))
         assertFalse(Controller.somethingActive(ctx))
         Scheduler.scheduleNextStart(ctx)
         assertEquals(at(6, 3, day = 17), nextAlarm())

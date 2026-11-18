@@ -230,11 +230,23 @@ class MainActivity : Activity() {
             } + ". Verspätungen kosten etwa 1 Abfrage je Minute, „Aktualisieren“ 1 je Haltestelle, „Verbindungen testen“ 1 je Verbindung.",
             13f, if ((busy.values.maxOrNull() ?: 0) > s.dailyLimit * 0.8) Notifier.AMBER else Ui.DIM,
         ))
-        val history = store.history()
+        val history = store.history(days = 14)
         if (history.isNotEmpty()) {
-            content.addView(Ui.text(this, "Tatsächlich: " + history.joinToString(" · ") { (d, n) ->
-                d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN).take(2) + " " + "%02d.%02d.".format(d.dayOfMonth, d.monthValue) + " " + n
-            }, 13f, Ui.DIM))
+            content.addView(Ui.text(this, "Tatsächlicher Verbrauch (letzte 14 Tage)", 13f, Ui.WHITE, true).apply {
+                setPadding(0, Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 2))
+            })
+            fun wd(d: LocalDate) = d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN).take(2)
+            content.addView(Ui.text(this, history.joinToString("\n") { (d, n) ->
+                val dis = store.dismissedOn(d)
+                "${wd(d)} %02d.%02d.   %3d".format(d.dayOfMonth, d.monthValue, n) + if (dis > 0) "   (${dis}× ausgeblendet)" else ""
+            }, 13f, Ui.DIM).apply { typeface = android.graphics.Typeface.MONOSPACE })
+            fun avg(days: List<Pair<LocalDate, Int>>) = if (days.isEmpty()) null else Math.round(days.map { it.second }.average()).toInt()
+            val moDo = avg(history.filter { it.first.dayOfWeek.value <= 4 })
+            val fr = avg(history.filter { it.first.dayOfWeek == DayOfWeek.FRIDAY })
+            val max = history.maxOf { it.second }
+            content.addView(Ui.text(this, listOfNotNull(
+                moDo?.let { "Ø Mo–Do $it" }, fr?.let { "Ø Fr $it" }, "höchster Wert $max", "Limit ${s.dailyLimit}",
+            ).joinToString(" · "), 13f, Ui.WHITE).apply { setPadding(0, Ui.dp(this@MainActivity, 4), 0, 0) })
         }
         val key = EditText(this).apply {
             hint = "VAO-Zugangsschlüssel (accessId)"

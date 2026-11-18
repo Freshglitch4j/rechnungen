@@ -31,14 +31,25 @@ class Store(context: Context) : VersionCache {
     fun countRequest(today: LocalDate = LocalDate.now(ZONE)) {
         val used = usedToday(today) + 1
         val history = historyJson().put(today.toString(), used)
-        // nur die letzten 14 Tage behalten
-        history.keys().asSequence().toList().filter { it < today.minusDays(14).toString() }.forEach { history.remove(it) }
+        // nur die letzten 5 Wochen behalten
+        history.keys().asSequence().toList().filter { it < today.minusDays(35).toString() }.forEach { history.remove(it) }
         prefs.edit().putString("quotaDate", today.toString()).putInt("quotaUsed", used)
             .putString("quotaHistory", history.toString()).apply()
     }
 
     private fun historyJson(): JSONObject =
         try { JSONObject(prefs.getString("quotaHistory", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+
+    /** Merkt, dass an [day] eine Anzeige ausgeblendet wurde (für die Auswertung des Verbrauchs). */
+    fun countDismiss(day: LocalDate = LocalDate.now(ZONE)) {
+        val h = try { JSONObject(prefs.getString("dismissHistory", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
+        h.put(day.toString(), h.optInt(day.toString(), 0) + 1)
+        h.keys().asSequence().toList().filter { it < day.minusDays(35).toString() }.forEach { h.remove(it) }
+        prefs.edit().putString("dismissHistory", h.toString()).apply()
+    }
+
+    fun dismissedOn(day: LocalDate): Int =
+        try { JSONObject(prefs.getString("dismissHistory", "{}") ?: "{}").optInt(day.toString(), 0) } catch (e: Exception) { 0 }
 
     /** Tatsächlicher Verbrauch der letzten Tage (ohne heute), neueste zuerst; nur Tage mit Abfragen. */
     fun history(today: LocalDate = LocalDate.now(ZONE), days: Int = 7): List<Pair<LocalDate, Int>> {

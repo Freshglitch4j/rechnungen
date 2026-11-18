@@ -119,6 +119,7 @@ object Controller {
         when (action) {
             ACTION_DISMISS -> {
                 store.dismissedKey = w.key
+                store.countDismiss(now.toLocalDate())
                 store.log("Ausgeblendet: ${w.key}")
                 Live.window = null; Live.states = emptyMap()
                 Live.publish(null)
