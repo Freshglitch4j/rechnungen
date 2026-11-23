@@ -61,7 +61,13 @@ data class Departure(
         get() = realtime?.let { java.time.Duration.between(planned, it).toMinutes().toInt() }
 }
 
-data class PassStop(val name: String, val ids: String)
+data class PassStop(
+    val name: String,
+    val ids: String,
+    /** Planmäßige und – falls gemeldet – erwartete Ankunft an diesem Halt. */
+    val arr: LocalDateTime? = null,
+    val rtArr: LocalDateTime? = null,
+)
 
 data class Board(val departures: List<Departure>)
 
@@ -183,7 +189,13 @@ class VaoClient(
                     strings(s.opt("altId")).forEach { append(it).append(' ') }
                     strings(s.opt("mainMastAltId")).forEach { append(it).append(' ') }
                 }
-                PassStop(s.optString("name"), ids)
+                fun at(dateKey: String, timeKey: String, fallbackDate: String): LocalDateTime? {
+                    val t = s.optString(timeKey).ifEmpty { return null }
+                    val dt = s.optString(dateKey).ifEmpty { fallbackDate }
+                    return try { LocalDateTime.of(LocalDate.parse(dt), parseTime(t)) } catch (e: Exception) { null }
+                }
+                val arr = at("arrDate", "arrTime", date)
+                PassStop(s.optString("name"), ids, arr, at("rtArrDate", "rtArrTime", arr?.toLocalDate()?.toString() ?: date))
             }
             return Departure(
                 planned = planned,

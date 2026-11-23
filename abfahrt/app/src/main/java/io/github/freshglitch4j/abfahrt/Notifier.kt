@@ -134,10 +134,15 @@ object Notifier {
         val text = (listOf(Fmt.countdown(p, d.now)) + if (others.isEmpty()) listOf(Fmt.where(p)) else others.map(::compact))
             .filter { it.isNotEmpty() }.joinToString(" · ")
         val big = buildString {
-            append(detail(p, d))
-            for (r in others) {
-                append("\n\n").append(Fmt.line(r)).append('\n').append(detail(r, d))
+            for ((i, o) in d.options.withIndex()) {
+                for ((j, r) in o.open.withIndex()) {
+                    if (i == 0 && j == 0) { append(detail(r, d)); continue }
+                    append(if (j == 0) "\n\n" else "\n")
+                    r.transfer?.let { append("↳ ").append(it.text).append('\n') }
+                    append(Fmt.line(r)).append('\n').append(detail(r, d))
+                }
             }
+            if (d.options.isEmpty()) append(detail(p, d))
         }
         val sub = (if (d.demo) "DEMO – erfundene Werte" else d.window.kind.title) + " · " + Fmt.asOf(d)
 

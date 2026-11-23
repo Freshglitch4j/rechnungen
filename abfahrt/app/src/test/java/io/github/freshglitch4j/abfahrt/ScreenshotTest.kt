@@ -99,6 +99,20 @@ class ScreenshotTest {
         shootActivity(StandActivity::class.java, "stand-gelb")
     }
 
+    @Test fun standanzeigeUmstieg() {
+        val vao = Live.http as FakeVao
+        vao.boards["at:47:65761"] = listOf(FakeDep("06:33", 1))
+        vao.boards["at:47:65724"] = listOf(FakeDep("06:42", 2, "Bus 4055", "4055", arrivals = mapOf("at:47:1170" to ("06:46" to 2))))
+        vao.boards["at:47:1170"] = listOf(FakeDep("06:54", 0, "REX2", "", "Innsbruck Hbf", via = listOf("at:47:1172"), arrivals = mapOf("at:47:1172" to ("06:58" to 0))))
+        vao.boards["at:47:1172"] = listOf(FakeDep("07:04", 0, "Bus 760", "760", "Breitenbach", via = listOf("at:47:64459")))
+        now = LocalDateTime.of(2026, 11, 16, 6, 24, 5)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        shootActivity(StandActivity::class.java, "stand-umstieg")
+        now = LocalDateTime.of(2026, 11, 16, 6, 36, 5)
+        Controller.step(ctx, Controller.ACTION_TICK)
+        shootActivity(StandActivity::class.java, "stand-umstieg-spaeter")
+    }
+
     @Test fun standanzeigeHinfahrt() {
         now = LocalDateTime.of(2026, 11, 16, 6, 21, 5)
         Controller.step(ctx, Controller.ACTION_TICK)

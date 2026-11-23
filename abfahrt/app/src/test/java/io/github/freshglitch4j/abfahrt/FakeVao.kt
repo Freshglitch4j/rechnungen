@@ -11,6 +11,8 @@ import java.net.URLDecoder
 data class FakeDep(
     val time: String, val delay: Int? = 0, val name: String = "Bus 760", val line: String = "760",
     val direction: String = "Wörgl Hauptbahnhof", val cancelled: Boolean = false, val via: List<String> = listOf("at:47:1170"),
+    /** Ankunft (Plan) und Verspätung an Halten der Fahrt, je Halte-ID. */
+    val arrivals: Map<String, Pair<String, Int?>> = emptyMap(),
 )
 
 /**
@@ -66,7 +68,12 @@ class FakeVao : Http {
                 .put("name", d.name).put("type", "ST").put("stop", "Haltestelle").put("stopExtId", "470000000")
                 .put("time", plus(d.time, 0)).put("date", date).put("direction", d.direction)
                 .put("Stops", JSONObject().put("Stop", JSONArray(d.via.mapIndexed { i, id ->
-                    JSONObject().put("name", "Halt $i").put("id", "A=1@O=Halt@L=47000000$i@i=A×$id@").put("extId", "47000000$i")
+                    JSONObject().put("name", "Halt $i").put("id", "A=1@O=Halt@L=47000000$i@i=A×$id@").put("extId", "47000000$i").also { st ->
+                        d.arrivals[id]?.let { (t, delay) ->
+                            st.put("arrTime", plus(t, 0)).put("arrDate", date)
+                            if (delay != null) st.put("rtArrTime", plus(t, delay)).put("rtArrDate", date)
+                        }
+                    }
                 })))
             if (d.delay != null && !d.cancelled) o.put("rtTime", plus(d.time, d.delay)).put("rtDate", date).put("prognosisType", "PROGNOSED")
             if (d.cancelled) o.put("cancelled", true)

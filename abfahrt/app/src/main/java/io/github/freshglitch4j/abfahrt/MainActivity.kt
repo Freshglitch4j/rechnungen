@@ -164,7 +164,7 @@ class MainActivity : Activity() {
     private fun renderPinned(s: Settings) {
         for (kind in TripKind.entries) {
             val conns = s.connections.filter { it.enabled && it.kind == kind }
-            if (conns.map { it.stopId to it.time }.distinct().size < 2) continue
+            if (conns.map { Engine.optionKey(it) }.distinct().size < 2) continue
             content.addView(Ui.section(this, "${kind.title}: was steht vorn?"))
             val current = s.pinned[kind]?.takeIf { id -> conns.any { it.id == id } }
             fun option(label: String, id: String?) {
@@ -175,14 +175,20 @@ class MainActivity : Activity() {
                 }.apply { if (selected) setTextColor(Notifier.GREEN) })
             }
             option("Automatisch – die jeweils nächste Abfahrt", null)
-            for (c in conns) option("${c.stopName} · ${Fmt.time(c.time)} (${days(c.days)})", c.id)
+            for (legs in conns.sortedBy { it.time }.groupBy { Engine.optionKey(it) }.values) {
+                val c = legs.first()
+                val label = if (legs.size == 1) "${c.stopName} · ${Fmt.time(c.time)} (${days(c.days)})"
+                else legs.joinToString(" → ") { "${it.label} ${Fmt.time(it.time)}" } + " (${days(c.days)})"
+                option(label, c.id)
+            }
         }
     }
 
     private fun renderConnections(s: Settings) {
         content.addView(Ui.section(this, "Verbindungen"))
         for (c in s.connections.sortedWith(compareBy({ it.kind }, { it.time }))) {
-            val line = "${c.kind.title} · ${days(c.days)} · ${Fmt.time(c.time)}\n${c.label} · ${c.stopName}" +
+            val line = "${c.kind.title} · ${days(c.days)} · ${Fmt.time(c.time)}" + (if (c.group.isNotEmpty()) " · ${c.group}" else "") +
+                "\n${c.label} · ${c.stopName}" +
                 (if (c.towardsName.isNotEmpty()) " → ${c.towardsName}" else "") + if (c.enabled) "" else "  (aus)"
             content.addView(Ui.button(this, line) { editConnection(c) }.apply {
                 textAlignment = TextView.TEXT_ALIGNMENT_VIEW_START
@@ -429,6 +435,7 @@ class MainActivity : Activity() {
         val line = field("Linienfilter (z. B. 760 oder REX; leer = alle)", original.line)
         val towardsName = field("Fährt weiter nach", original.towardsName)
         val towardsId = field("ID des Zielhalts (z. B. $WOERGL_HBF)", original.towardsId)
+        val group = field("Umstiegsverbindung: gleicher Name = eine Option (leer = eigenständig)", original.group)
         col.addView(Ui.button(this, "Zielhalt suchen (1 Abfrage)") { searchStop(towardsName, towardsId) })
         val enabled = Switch(this).apply { text = "Aktiv"; isChecked = original.enabled }
         col.addView(enabled)
@@ -442,6 +449,7 @@ class MainActivity : Activity() {
                     stopName = stopName.text.toString().trim(), stopId = stopId.text.toString().trim(),
                     line = line.text.toString().trim(), towardsName = towardsName.text.toString().trim(),
                     towardsId = towardsId.text.toString().trim(), enabled = enabled.isChecked,
+                    group = group.text.toString().trim(),
                 )
                 val st = store.settings
                 save(st.copy(connections = st.connections.filter { it.id != c.id } + c))

@@ -106,8 +106,8 @@ class StandActivity : Activity() {
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
         }
-        if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
         add("Schließen") { finish() }
+        if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
         col.addView(buttons)
 
         // Aktuelle Uhrzeit groß, oben mittig, durch eine Linie von den Abfahrten getrennt.

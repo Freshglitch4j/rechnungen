@@ -24,7 +24,7 @@ class ScheduleTest {
         assertEquals(TripKind.HIN, w[0].kind)
         // 30 Minuten vor der ersten Abfahrt (06:33)
         assertEquals(LocalTime.of(6, 3), w[0].start.toLocalTime())
-        assertEquals(listOf("hin-moosegg", "hin-gratten"), w[0].connections.map { it.id })
+        assertEquals(listOf("hin-moosegg", "hin-gratten", "hin-kombi-rex", "hin-kombi-bus"), w[0].connections.map { it.id })
         assertEquals(TripKind.HEIM, w[1].kind)
         assertEquals(LocalTime.of(16, 16), w[1].start.toLocalTime())
         assertEquals(listOf("heim-bus", "heim-rex"), w[1].connections.map { it.id })
@@ -68,8 +68,10 @@ class ScheduleTest {
     @Test fun verbrauchsschaetzung() {
         val w = io.github.freshglitch4j.abfahrt.core.Budget.perWeekday(s)
         println("Schätzung je Wochentag: $w")
-        // entspricht dem simulierten Tagesablauf (rund 60 an Mo–Do)
-        assertTrue(w.toString(), w[java.time.DayOfWeek.MONDAY]!! in 50..70)
+        // Voreinstellung (30 Min Vorlauf, mit Umstiegsoption am Morgen): unter dem Limit von 100
+        assertTrue(w.toString(), w[java.time.DayOfWeek.MONDAY]!! in 70..92)
+        // mit 15 Min Vorlauf deutlich weniger
+        assertTrue(io.github.freshglitch4j.abfahrt.core.Budget.estimate(s.copy(leadMinutes = 15), mon) <= 70)
         assertTrue(w.toString(), w[java.time.DayOfWeek.FRIDAY]!! < w[java.time.DayOfWeek.MONDAY]!!)
         assertEquals(0, w[java.time.DayOfWeek.SATURDAY])
         assertEquals(0, w[java.time.DayOfWeek.SUNDAY])

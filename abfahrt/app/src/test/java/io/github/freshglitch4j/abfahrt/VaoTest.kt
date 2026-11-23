@@ -149,6 +149,19 @@ class VaoTest {
         assertNull(VaoClient.newestVersion("kaputt"))
     }
 
+    @Test fun aeltereEinstellungenBekommenDieUmstiegsoption() {
+        // Stand vor Version 2: ohne Gruppen und ohne die beiden Anschlussfahrten, Vorlauf 15 Min
+        val s = Settings()
+        val old = s.copy(leadMinutes = 15, connections = s.connections.filter { !it.id.startsWith("hin-kombi") }.map { it.copy(group = "") })
+        val json = old.toJson().put("schema", 1)
+        val migrated = Settings.fromJson(org.json.JSONObject(json.toString()))
+        assertEquals(15, migrated.leadMinutes)
+        assertEquals(setOf("hin-gratten", "hin-kombi-rex", "hin-kombi-bus"),
+            migrated.connections.filter { it.group.isNotEmpty() }.map { it.id }.toSet())
+        // ein zweites Laden ändert nichts mehr
+        assertEquals(migrated, Settings.fromJson(org.json.JSONObject(migrated.toJson().toString())))
+    }
+
     @Test fun einstellungenAlsJson() {
         val s = Settings(accessId = "abc", leadMinutes = 40, pinned = mapOf(TripKind.HIN to "hin-gratten"), autoStand = true, nowBar = true, dailyLimit = 250, skipHolidays = false)
         assertEquals(s, Settings.fromJson(JSONObject(s.toJson().toString())))

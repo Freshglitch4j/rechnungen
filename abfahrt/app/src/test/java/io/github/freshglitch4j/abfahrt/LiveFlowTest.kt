@@ -98,6 +98,51 @@ class LiveFlowTest {
         assertEquals(at(16, 17, 1), step.nextWake)
     }
 
+    private fun morgenBoards(busDelay: Int?, busCancelled: Boolean = false, rexDelay: Int = 0) {
+        vao.boards["at:47:65761"] = listOf(FakeDep("06:33", 0))
+        vao.boards["at:47:65724"] = listOf(FakeDep("06:42", busDelay, "Bus 4055", "4055", cancelled = busCancelled,
+            arrivals = mapOf("at:47:1170" to ("06:46" to busDelay))))
+        vao.boards["at:47:1170"] = listOf(FakeDep("06:54", rexDelay, "REX2", "", "Innsbruck Hbf", via = listOf("at:47:1172"),
+            arrivals = mapOf("at:47:1172" to ("06:58" to rexDelay))))
+        vao.boards["at:47:1172"] = listOf(FakeDep("07:04", 0, "Bus 760", "760", "Breitenbach", via = listOf("at:47:64459")))
+    }
+
+    private fun transferBeforeRex(): io.github.freshglitch4j.abfahrt.core.Transfer {
+        Live.reset(); Live.http = vao; Live.clock = { now }
+        now = at(6, 30)
+        return step().display!!.rows.single { it.conn.id == "hin-kombi-rex" }.transfer!!
+    }
+
+    @Test fun umstiegsoptionAlsZweiteOption() {
+        morgenBoards(busDelay = 1)
+        now = at(6, 20)
+        val d = step().display!!
+        assertEquals(2, d.options.size)
+        assertEquals(listOf("hin-moosegg"), d.options[0].rows.map { it.conn.id })
+        assertEquals(listOf("hin-gratten", "hin-kombi-rex", "hin-kombi-bus"), d.options[1].rows.map { it.conn.id })
+        val rex = d.rows.single { it.conn.id == "hin-kombi-rex" }
+        assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.OK, rex.transfer!!.state)
+        assertEquals(7L, rex.transfer!!.marginMin)            // an 06:47, ab 06:54
+        assertEquals("Umstieg Wörgl Hbf · 7 Min", rex.transfer!!.text)
+        assertEquals(6L, d.rows.single { it.conn.id == "hin-kombi-bus" }.transfer!!.marginMin)   // REX an Kundl 06:58, Bus ab 07:04
+        // nach Abfahrt des 06:33 rückt die Umstiegsoption nach vorn
+        now = at(6, 36)
+        val later = step().display!!
+        assertEquals("hin-gratten", later.primary!!.conn.id)
+        assertEquals(1, later.options.size)
+    }
+
+    @Test fun umstiegKnappVerpasstUndZubringerfall() {
+        morgenBoards(busDelay = 7)
+        assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.TIGHT, transferBeforeRex().state)
+        morgenBoards(busDelay = 10)
+        assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.MISSED, transferBeforeRex().state)
+        morgenBoards(busDelay = 10, rexDelay = 4)   // Zug wartet bzw. ist selbst verspätet
+        assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.OK, transferBeforeRex().state)
+        morgenBoards(busDelay = null, busCancelled = true)
+        assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.BROKEN, transferBeforeRex().state)
+    }
+
     @Test fun farbeNachVerspaetung() {
         fun colorFor(delay: Int?, cancelled: Boolean = false): Int {
             vao.boards["at:47:64459"] = listOf(FakeDep("16:46", delay, cancelled = cancelled))
@@ -206,7 +251,7 @@ class LiveFlowTest {
             steps++
         }
         println("Abfragen an einem Montag (Hin- und Heimfahrt): ${vao.boardRequests}")
-        assertTrue("Abfragen: ${vao.boardRequests}", vao.boardRequests <= 70)
+        assertTrue("Abfragen: ${vao.boardRequests}", vao.boardRequests <= 92)
         assertEquals(vao.boardRequests, store.usedToday(at(12, 0).toLocalDate()))
         // die Schätzung trifft den durchgespielten Tag
         val est = io.github.freshglitch4j.abfahrt.core.Budget.estimate(store.settings, at(12, 0).toLocalDate())

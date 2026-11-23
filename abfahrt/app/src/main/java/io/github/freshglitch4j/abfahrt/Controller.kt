@@ -211,12 +211,10 @@ object Controller {
 
     /** Wechselt die bevorzugte Fahrt des Fensters zur nächsten noch offenen. */
     private fun switchPinned(s: Settings, w: Window, states: Map<String, ConnState>, now: LocalDateTime): Settings {
-        val current = Engine.display(w, states, s, now, 1).primary?.conn?.id
-        val open = w.connections.filter { !Engine.isGone(w, it, states[it.id], now) }
-        if (open.size < 2) return s
-        val idx = open.indexOfFirst { it.id == current }
-        val next = open[(idx + 1) % open.size]
-        return s.copy(pinned = s.pinned + (w.kind to next.id))
+        val options = Engine.display(w, states, s, now, 1).options
+        if (options.size < 2) return s
+        // options[0] steht vorn → die nächste Option nach vorn holen
+        return s.copy(pinned = s.pinned + (w.kind to options[1].rows.first().conn.id))
     }
 
     // ---------------------------------------------------------------- Demo

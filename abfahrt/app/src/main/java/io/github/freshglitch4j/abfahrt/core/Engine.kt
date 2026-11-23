@@ -42,10 +42,31 @@ data class Row(
     val asOf: LocalDateTime?,
     val gone: Boolean,
     val primary: Boolean,
+    /** Bei Umstiegsverbindungen: der Umstieg vor dieser Fahrt. */
+    val transfer: Transfer? = null,
 ) {
     val hasRealtime: Boolean get() = expected != null
     val effective: LocalDateTime get() = expected ?: planned
     val lineLabel: String get() = conn.label.ifEmpty { "Fahrt" }
+}
+
+enum class TransferState { OK, TIGHT, MISSED, BROKEN, UNKNOWN }
+
+data class Transfer(val stopName: String, val marginMin: Long?, val state: TransferState) {
+    val text: String get() = when (state) {
+        TransferState.OK -> "Umstieg $stopName · $marginMin Min"
+        TransferState.TIGHT -> "Umstieg $stopName knapp · $marginMin Min"
+        TransferState.MISSED -> "Anschluss in $stopName nicht erreichbar"
+        TransferState.BROKEN -> "Zubringer fällt aus"
+        TransferState.UNKNOWN -> "Umstieg $stopName"
+    }
+}
+
+/** Eine Wahlmöglichkeit: eine einzelne Fahrt oder eine Umstiegsverbindung aus mehreren Fahrten. */
+data class Option(val key: String, val rows: List<Row>) {
+    val gone: Boolean get() = rows.all { it.gone }
+    val open: List<Row> get() = rows.filter { !it.gone }
+    val isChain: Boolean get() = rows.size > 1
 }
 
 data class Display(
@@ -53,10 +74,12 @@ data class Display(
     val rows: List<Row>,
     val now: LocalDateTime,
     val demo: Boolean = false,
+    /** Wahlmöglichkeiten; die vorn stehende zuerst, abgefahrene fehlen. */
+    val options: List<Option> = rows.filter { !it.gone }.map { Option(it.conn.id, listOf(it)) },
 ) {
-    val primary: Row? get() = rows.firstOrNull { it.primary } ?: rows.firstOrNull()
-    /** Weitere, noch nicht abgefahrene Fahrten. */
-    val others: List<Row> get() = rows.filter { it !== primary && !it.gone }
+    val primary: Row? get() = rows.firstOrNull { it.primary } ?: rows.firstOrNull { !it.gone } ?: rows.lastOrNull()
+    /** Weitere, noch nicht abgefahrene Fahrten (restliche Umstiegsfahrten und andere Optionen). */
+    val others: List<Row> get() = options.flatMap { it.open }.filter { it !== primary }
     /** Jüngster Datenstand über alle Zeilen. */
     val asOf: LocalDateTime? get() = rows.mapNotNull { it.asOf }.maxOrNull()
 }
@@ -105,7 +128,7 @@ object Engine {
         if (dep.passStops.isEmpty()) return null
         val wantName = normStop(c.towardsName)
         return dep.passStops.any { s ->
-            (c.towardsId.isNotEmpty() && Regex("(^|[^\\p{Nd}:])" + Regex.escape(c.towardsId) + "($|[^\\p{Nd}])").containsMatchIn(s.ids)) ||
+            idIn(s.ids, c.towardsId) ||
                 (wantName.isNotEmpty() && normStop(s.name).let { it.startsWith(wantName) || wantName.startsWith(it) && it.length >= 5 })
         }
     }
@@ -198,10 +221,21 @@ object Engine {
     }
 
     /** Abstand bis zur nächsten Abfrage dieser Fahrt nach einem erfolgreichen Abruf. */
-    private fun cadenceSec(w: Window, c: Connection, st: ConnState, now: LocalDateTime, budgetLeft: Int): Long {
+    /** Vorherige Fahrt derselben Umstiegsverbindung, falls [c] eine Anschlussfahrt ist. */
+    private fun previousLeg(w: Window, c: Connection): Connection? {
+        if (c.group.isEmpty()) return null
+        return w.connections.filter { it.group == c.group && it.time < c.time }.maxByOrNull { it.time }
+    }
+
+    private fun cadenceSec(w: Window, c: Connection, st: ConnState, states: Map<String, ConnState>, now: LocalDateTime, budgetLeft: Int): Long {
         val minutes = Duration.between(now, bestKnown(w, c, st)).toMinutes()
         val normal = intervalSec(minutes, budgetLeft)
+        val prev = previousLeg(w, c)
         return when {
+            // Anschlussfahrt: solange die Zubringerfahrt noch nicht abgefahren ist, reicht alle 5 Min,
+            // danach alle 2 Min – der Umstieg hat einige Minuten Puffer.
+            prev != null && !isGone(w, prev, states[prev.id], now) -> maxOf(normal, 300L, if (st.match is Match.NotFound) 300L else 0L)
+            prev != null -> maxOf(normal, 120L)
             // Fahrt steht nicht im Fahrplan: das ändert sich nicht im Minutentakt.
             st.match is Match.NotFound -> maxOf(normal, 300L)
             // Planzeit vorbei und der Betreiber liefert keine Prognose: seltener nachsehen.
@@ -210,12 +244,12 @@ object Engine {
         }
     }
 
-    private fun isDue(w: Window, c: Connection, st: ConnState?, now: LocalDateTime, budgetLeft: Int): Boolean {
+    private fun isDue(w: Window, c: Connection, st: ConnState?, states: Map<String, ConnState>, now: LocalDateTime, budgetLeft: Int): Boolean {
         if (isGone(w, c, st, now)) return false
         val last = st?.lastAttempt ?: return true
         val sinceLast = Duration.between(last, now).seconds
         if (st.error != null) return sinceLast >= retrySec(st)
-        return sinceLast >= cadenceSec(w, c, st, now, budgetLeft)
+        return sinceLast >= cadenceSec(w, c, st, states, now, budgetLeft)
     }
 
     fun dueRequests(w: Window, states: Map<String, ConnState>, now: LocalDateTime, budgetLeft: Int, force: Boolean = false): List<BoardRequest> {
@@ -223,7 +257,7 @@ object Engine {
         return w.connections.groupBy { it.stopId to it.towardsId }.mapNotNull { (key, conns) ->
             val live = conns.filter { !isGone(w, it, states[it.id], now) }
             if (live.isEmpty()) return@mapNotNull null
-            if (!force && live.none { isDue(w, it, states[it.id], now, budgetLeft) }) return@mapNotNull null
+            if (!force && live.none { isDue(w, it, states[it.id], states, now, budgetLeft) }) return@mapNotNull null
             val first = conns.minOf { plannedAt(w, it) }
             val last = conns.maxOf { plannedAt(w, it) }
             BoardRequest(
@@ -268,7 +302,7 @@ object Engine {
             val st = states[c.id]
             val last = st?.lastAttempt ?: return@mapNotNull now
             if (st.error != null) return@mapNotNull last.plusSeconds(retrySec(st))
-            last.plusSeconds(cadenceSec(w, c, st, now, budgetLeft))
+            last.plusSeconds(cadenceSec(w, c, st, states, now, budgetLeft))
         }.minOrNull()
     }
 
@@ -277,14 +311,55 @@ object Engine {
     /** Ab diesem Alter gelten Daten als veraltet: ein ausgefallener Abruf plus Reserve. */
     fun staleAfterSec(minutesToDeparture: Long): Long = intervalSec(minutesToDeparture, Int.MAX_VALUE) + 150
 
+    /** Mindestzeit zum Umsteigen; darunter gilt ein Anschluss als knapp. */
+    const val MIN_TRANSFER_MIN = 2L
+
+    fun optionKey(c: Connection): String = if (c.group.isNotEmpty()) "g:" + c.group else c.id
+
+    fun idIn(ids: String, id: String): Boolean =
+        id.isNotEmpty() && Regex("(^|[^\\p{Nd}:])" + Regex.escape(id) + "($|[^\\p{Nd}])").containsMatchIn(ids)
+
+    /** Umstieg vor [next]: Ankunft der Vorfahrt am Umstiegshalt gegen die erwartete Abfahrt. */
+    private fun transfer(prev: Row, prevState: ConnState?, next: Row): Transfer {
+        if (prev.status == Status.CANCELLED) return Transfer(next.conn.stopName, null, TransferState.BROKEN)
+        val dep = (prevState?.match as? Match.Found)?.dep
+        val stop = dep?.passStops?.firstOrNull { idIn(it.ids, next.conn.stopId) }
+        val arr = stop?.let { it.rtArr ?: it.arr } ?: return Transfer(next.conn.stopName, null, TransferState.UNKNOWN)
+        val margin = Duration.between(arr, next.effective).toMinutes()
+        val state = when {
+            margin < 0 -> TransferState.MISSED
+            margin < MIN_TRANSFER_MIN -> TransferState.TIGHT
+            else -> TransferState.OK
+        }
+        return Transfer(next.conn.stopName, margin, state)
+    }
+
     fun display(w: Window, states: Map<String, ConnState>, s: Settings, now: LocalDateTime, budgetLeft: Int, demo: Boolean = false): Display {
-        val rows = w.connections.map { c -> row(w, c, states[c.id], s, now, budgetLeft) }
-        val open = rows.filter { !it.gone }
+        var rows = w.connections.map { c -> row(w, c, states[c.id], s, now, budgetLeft) }
+        // Umstiege innerhalb einer Gruppe bewerten.
+        val withTransfer = rows.toMutableList()
+        for ((_, legs) in rows.withIndex().filter { it.value.conn.group.isNotEmpty() }.groupBy { it.value.conn.group }) {
+            val ordered = legs.sortedBy { it.value.planned }
+            for (k in 1 until ordered.size) {
+                val prev = ordered[k - 1].value
+                withTransfer[ordered[k].index] = ordered[k].value.copy(transfer = transfer(prev, states[prev.conn.id], ordered[k].value))
+            }
+        }
+        rows = withTransfer
+        // Optionen in Fahrplanreihenfolge (Option 1, Option 2 …).
+        val all = rows.groupBy { optionKey(it.conn) }
+            .map { (k, r) -> Option(k, r.sortedBy { it.planned }) }
+            .sortedBy { it.rows.first().planned }
+        val live = all.filter { !it.gone }
         val pinnedId = s.pinned[w.kind]
-        val primary = open.firstOrNull { it.conn.id == pinnedId }
-            ?: open.minByOrNull { it.effective }
-            ?: rows.lastOrNull()
-        return Display(w, rows.map { if (it === primary) it.copy(primary = true) else it }, now, demo)
+        val first = live.firstOrNull { o -> o.rows.any { it.conn.id == pinnedId } }
+            ?: live.minByOrNull { o -> o.open.first().effective }
+        val primaryRow = first?.open?.firstOrNull() ?: rows.lastOrNull()
+        rows = rows.map { if (it === primaryRow) it.copy(primary = true) else it }
+        val byId = rows.associateBy { it.conn.id }
+        val options = (listOfNotNull(first) + live.filter { it !== first })
+            .map { o -> o.copy(rows = o.rows.map { byId.getValue(it.conn.id) }) }
+        return Display(w, rows, now, demo, options)
     }
 
     private fun row(w: Window, c: Connection, st: ConnState?, s: Settings, now: LocalDateTime, budgetLeft: Int): Row {

@@ -31,6 +31,11 @@ data class Connection(
     /** Haltestelle im weiteren Fahrtverlauf; grenzt die Richtung ein. */
     val towardsId: String = "",
     val enabled: Boolean = true,
+    /**
+     * Umstiegsverbindung: Fahrten mit gleichem Gruppennamen bilden zusammen eine
+     * Option (z. B. Bus → Zug → Bus). Leer = eigenständige Option.
+     */
+    val group: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -44,6 +49,7 @@ data class Connection(
         .put("towardsName", towardsName)
         .put("towardsId", towardsId)
         .put("enabled", enabled)
+        .put("group", group)
 
     companion object {
         fun fromJson(o: JSONObject): Connection {
@@ -60,6 +66,7 @@ data class Connection(
                 towardsName = o.optString("towardsName"),
                 towardsId = o.optString("towardsId"),
                 enabled = o.optBoolean("enabled", true),
+                group = o.optString("group"),
             )
         }
     }
@@ -87,6 +94,7 @@ data class Settings(
     val nowBar: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
+        .put("schema", SCHEMA)
         .put("connections", JSONArray(connections.map { it.toJson() }))
         .put("active", active)
         .put("leadMinutes", leadMinutes)
@@ -98,10 +106,19 @@ data class Settings(
         .put("nowBar", nowBar)
 
     companion object {
+        /** Version des gespeicherten Formats; neuere Voreinstellungen werden bei älteren Ständen ergänzt. */
+        const val SCHEMA = 2
+
         fun fromJson(o: JSONObject): Settings {
             val arr = o.optJSONArray("connections")
-            val conns = if (arr == null) defaultConnections()
+            var conns = if (arr == null) defaultConnections()
             else (0 until arr.length()).map { Connection.fromJson(arr.getJSONObject(it)) }
+            if (arr != null && o.optInt("schema", 1) < 2) {
+                // Version 2: Umstiegsoption Grattenbrücke → Wörgl (REX) → Kundl Bahnhof (Bus 760)
+                val defaults = defaultConnections().associateBy { it.id }
+                conns = conns.map { if (it.id == "hin-gratten") it.copy(group = KOMBI) else it } +
+                    listOf("hin-kombi-rex", "hin-kombi-bus").filter { id -> conns.none { it.id == id } }.map { defaults.getValue(it) }
+            }
             val pinned = mutableMapOf<TripKind, String>()
             o.optJSONObject("pinned")?.let { p ->
                 for (k in TripKind.entries) p.optString(k.name).takeIf { it.isNotEmpty() }?.let { pinned[k] = it }
@@ -125,6 +142,10 @@ private val MO_FR = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESD
 private val MO_DO = MO_FR - DayOfWeek.FRIDAY
 
 const val WOERGL_HBF = "at:47:1170"
+const val KUNDL_BF = "at:47:1172"
+const val KUNDL_GEMEINDESAAL = "at:47:64459"
+const val KOMBI = "Umstieg Wörgl"
+
 
 /**
  * Voreinstellung. Haltestellen-IDs, Linien und Zeiten sind gegen die
@@ -141,23 +162,35 @@ fun defaultConnections(): List<Connection> = listOf(
         id = "hin-gratten", kind = TripKind.HIN, label = "Bus 4055",
         stopName = "Kirchbichl Grattenbrücke", stopId = "at:47:65724",
         time = LocalTime.of(6, 42), days = MO_FR, line = "4055",
-        towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
+        towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF, group = KOMBI,
+    ),
+    Connection(
+        id = "hin-kombi-rex", kind = TripKind.HIN, label = "REX 2",
+        stopName = "Wörgl Hbf", stopId = WOERGL_HBF,
+        time = LocalTime.of(6, 54), days = MO_FR, line = "REX",
+        towardsName = "Kundl Bahnhof", towardsId = KUNDL_BF, group = KOMBI,
+    ),
+    Connection(
+        id = "hin-kombi-bus", kind = TripKind.HIN, label = "Bus 760",
+        stopName = "Kundl Bahnhof", stopId = KUNDL_BF,
+        time = LocalTime.of(7, 4), days = MO_FR, line = "760",
+        towardsName = "Kundl Gemeindesaal", towardsId = KUNDL_GEMEINDESAAL, group = KOMBI,
     ),
     Connection(
         id = "heim-bus", kind = TripKind.HEIM, label = "Bus 760",
-        stopName = "Kundl Gemeindesaal", stopId = "at:47:64459",
+        stopName = "Kundl Gemeindesaal", stopId = KUNDL_GEMEINDESAAL,
         time = LocalTime.of(16, 46), days = MO_DO, line = "760",
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),
     Connection(
         id = "heim-rex", kind = TripKind.HEIM, label = "REX 2",
-        stopName = "Kundl Bahnhof", stopId = "at:47:1172",
+        stopName = "Kundl Bahnhof", stopId = KUNDL_BF,
         time = LocalTime.of(16, 59), days = MO_DO, line = "REX",
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),
     Connection(
         id = "heim-rex-fr", kind = TripKind.HEIM, label = "REX 2",
-        stopName = "Kundl Bahnhof", stopId = "at:47:1172",
+        stopName = "Kundl Bahnhof", stopId = KUNDL_BF,
         time = LocalTime.of(12, 29), days = setOf(DayOfWeek.FRIDAY), line = "REX",
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),

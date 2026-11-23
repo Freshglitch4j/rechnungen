@@ -18,7 +18,10 @@ import android.widget.TextView
 import io.github.freshglitch4j.abfahrt.core.Display
 import io.github.freshglitch4j.abfahrt.core.Fmt
 import io.github.freshglitch4j.abfahrt.core.Row
+import io.github.freshglitch4j.abfahrt.core.Option
 import io.github.freshglitch4j.abfahrt.core.Status
+import io.github.freshglitch4j.abfahrt.core.Transfer
+import io.github.freshglitch4j.abfahrt.core.TransferState
 import java.time.LocalDateTime
 
 /** Kleine Helfer, um die Oberfläche ohne XML aufzubauen. */
@@ -88,13 +91,30 @@ object Ui {
      */
     fun departures(c: Context, d: Display, now: LocalDateTime, scale: Float = 1f, countdown: Boolean = true): LinearLayout {
         val col = column(c)
-        // Die nächste Fahrt groß, weitere kleiner und durch eine Linie abgetrennt.
-        d.primary?.let { col.addView(departure(c, it, now, scale * 1.15f, countdown)) }
-        for ((i, r) in d.others.withIndex()) {
-            col.addView(if (i == 0) divider(c, (16 * scale).toInt()) else spacer(c, (12 * scale).toInt()))
-            col.addView(departure(c, r, now, scale * 0.72f, countdown).apply { alpha = 0.85f })
+        // Die vordere Option groß, weitere kleiner und durch eine Linie abgetrennt.
+        // Bei Umstiegsverbindungen folgen die weiteren Fahrten kleiner, mit Umstiegshinweis.
+        val options = d.options.ifEmpty { listOfNotNull(d.primary).map { Option(it.conn.id, listOf(it)) } }
+        for ((i, o) in options.withIndex()) {
+            if (i == 1) col.addView(divider(c, (16 * scale).toInt())) else if (i > 1) col.addView(spacer(c, (14 * scale).toInt()))
+            val main = if (i == 0) scale * 1.15f else scale * 0.72f
+            for ((j, r) in o.open.withIndex()) {
+                r.transfer?.takeIf { j > 0 || o.rows.first().gone }?.let { t ->
+                    col.addView(text(c, "↓ " + t.text, 15f * (if (i == 0) scale else main), transferColor(t), t.state != TransferState.OK && t.state != TransferState.UNKNOWN).apply {
+                        setPadding(0, dp(c, 6), 0, dp(c, 4))
+                    })
+                }
+                val legScale = if (j == 0) main else main * 0.72f
+                col.addView(departure(c, r, now, legScale, countdown).apply { if (i > 0) alpha = 0.85f })
+            }
         }
         return col
+    }
+
+    fun transferColor(t: Transfer): Int = when (t.state) {
+        TransferState.OK, TransferState.UNKNOWN -> DIM
+        TransferState.TIGHT -> Notifier.YELLOW
+        TransferState.MISSED -> Notifier.RED
+        TransferState.BROKEN -> Notifier.PURPLE
     }
 
     private fun departure(c: Context, r: Row, now: LocalDateTime, scale: Float, countdown: Boolean): LinearLayout {
