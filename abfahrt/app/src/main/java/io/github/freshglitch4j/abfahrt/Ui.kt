@@ -145,6 +145,8 @@ object Ui {
             }
             col.addView(text(c, line, 20f * scale, WHITE))
         }
+        // dezent: Ankunftsgleis bei Zügen (gelb, wenn kurzfristig geändert)
+        r.arrival?.let { a -> col.addView(text(c, a.text, 13f * scale, if (a.changed) Notifier.YELLOW else FAINT)) }
         if (r.note.isNotEmpty()) col.addView(text(c, r.note, 13f * scale, DIM))
         return col
     }

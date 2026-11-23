@@ -158,6 +158,22 @@ class LiveFlowTest {
         assertEquals(base + 4, vao.boardRequests)
     }
 
+    @Test fun ankunftsgleisNurBeiZuegen() {
+        vao.boards["at:47:1172"] = listOf(FakeDep("16:59", 0, "REX2", "", "Zell am See", tracks = mapOf("at:47:1170" to ("3" to null))))
+        vao.boards["at:47:64459"] = listOf(FakeDep("16:46", 0, tracks = mapOf("at:47:1170" to ("B" to null))))
+        now = at(16, 30)
+        val d = step().display!!
+        val rex = d.rows.single { it.conn.id == "heim-rex" }
+        assertTrue(rex.isTrain)
+        assertEquals("an Wörgl Hbf · Gleis 3", rex.arrival!!.text)
+        assertNull(d.rows.single { it.conn.id == "heim-bus" }.arrival)
+        // Gleisänderung wird kenntlich gemacht
+        vao.boards["at:47:1172"] = listOf(FakeDep("16:59", 0, "REX2", "", "Zell am See", tracks = mapOf("at:47:1170" to ("3" to "5"))))
+        now = at(16, 31); val changed = step(Controller.ACTION_REFRESH).display!!.rows.single { it.conn.id == "heim-rex" }.arrival!!
+        assertTrue(changed.changed)
+        assertEquals("an Wörgl Hbf · Gleis 5 statt 3", changed.text)
+    }
+
     @Test fun farbeNachVerspaetung() {
         fun colorFor(delay: Int?, cancelled: Boolean = false): Int {
             vao.boards["at:47:64459"] = listOf(FakeDep("16:46", delay, cancelled = cancelled))

@@ -44,10 +44,20 @@ data class Row(
     val primary: Boolean,
     /** Bei Umstiegsverbindungen: der Umstieg vor dieser Fahrt. */
     val transfer: Transfer? = null,
+    /** Zug (Gleis) statt Bus (Steig). */
+    val isTrain: Boolean = false,
+    /** Nur bei Zügen: Ankunftsgleis am Zielhalt, sofern gemeldet. */
+    val arrival: Arrival? = null,
 ) {
     val hasRealtime: Boolean get() = expected != null
     val effective: LocalDateTime get() = expected ?: planned
     val lineLabel: String get() = conn.label.ifEmpty { "Fahrt" }
+}
+
+data class Arrival(val stopName: String, val track: String, val plannedTrack: String?) {
+    /** Gleis wurde kurzfristig geändert. */
+    val changed: Boolean get() = plannedTrack != null && plannedTrack != track
+    val text: String get() = "an $stopName · Gleis $track" + if (changed) " statt $plannedTrack" else ""
 }
 
 enum class TransferState { OK, TIGHT, MISSED, BROKEN, UNKNOWN }
@@ -311,6 +321,12 @@ object Engine {
     /** Ab diesem Alter gelten Daten als veraltet: ein ausgefallener Abruf plus Reserve. */
     fun staleAfterSec(minutesToDeparture: Long): Long = intervalSec(minutesToDeparture, Int.MAX_VALUE) + 150
 
+    /** Zug oder Bus? Nach Produktbezeichnung der VAO (Busse heißen „Bus …“ bzw. Kategorie „…bus“). */
+    fun isTrain(d: Departure): Boolean {
+        val all = (d.name + " " + d.line + " " + d.category).lowercase()
+        return !all.contains("bus") && !all.contains("taxi") && Regex("rex|rjx|rj|cjx|ice|ic|ec|nj|ir|s\\s?\\d|zug|bahn|regional|railjet|westbahn|wb|r\\s?\\d").containsMatchIn(all)
+    }
+
     /** Mindestzeit zum Umsteigen; darunter gilt ein Anschluss als knapp. */
     const val MIN_TRANSFER_MIN = 2L
 
@@ -372,9 +388,15 @@ object Engine {
         val age = st?.lastSuccess?.let { Duration.between(it, now).seconds }
         val fresh = age != null && age <= staleAfterSec(minutes)
 
+        val train = found?.dep?.let(::isTrain) ?: false
+        val arrival = found?.dep?.takeIf { train }?.passStops?.firstOrNull { idIn(it.ids, c.towardsId) }?.let { ps ->
+            val track = ps.rtArrTrack ?: ps.arrTrack ?: return@let null
+            Arrival(c.towardsName.ifEmpty { ps.name }, track, ps.arrTrack)
+        }
         fun base(status: Status, text: String, note: String = "", expected: LocalDateTime? = null, delay: Int? = null) = Row(
             conn = c, planned = planned, expected = expected, delayMin = delay, status = status, statusText = text,
             note = note, track = found?.dep?.let { it.rtTrack ?: it.track }, asOf = st?.lastSuccess, gone = gone, primary = false,
+            isTrain = train, arrival = arrival,
         )
 
         val deviates = if (found?.timeDeviates == true) "Fahrplan: ${Fmt.time(planned)} statt ${Fmt.time(plannedCfg)}" else ""
@@ -448,7 +470,7 @@ object Fmt {
     /** Eine Zeile, z. B. „Bus 760  16:46 → 16:51  +5 Min“. */
     fun line(r: Row): String = "${r.lineLabel}  ${times(r)}  ${r.statusText}"
 
-    fun where(r: Row): String = r.conn.stopName + (r.track?.let { " · Steig $it" } ?: "")
+    fun where(r: Row): String = r.conn.stopName + (r.track?.let { (if (r.isTrain) " · Gleis " else " · Steig ") + it } ?: "")
 
     fun asOf(d: Display): String = d.asOf?.let { "Stand ${time(it)}" } ?: "noch keine Daten"
 

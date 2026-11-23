@@ -13,6 +13,8 @@ data class FakeDep(
     val direction: String = "Wörgl Hauptbahnhof", val cancelled: Boolean = false, val via: List<String> = listOf("at:47:1170"),
     /** Ankunft (Plan) und Verspätung an Halten der Fahrt, je Halte-ID. */
     val arrivals: Map<String, Pair<String, Int?>> = emptyMap(),
+    /** Ankunftsgleis (Plan, aktuell) je Halte-ID. */
+    val tracks: Map<String, Pair<String, String?>> = emptyMap(),
 )
 
 /**
@@ -64,11 +66,12 @@ class FakeVao : Http {
             val o = JSONObject()
                 .put("JourneyDetailRef", JSONObject().put("ref", "1|123|0|81|16112026"))
                 .put("JourneyStatus", "P")
-                .put("ProductAtStop", JSONObject().put("name", d.name).put("displayNumber", d.line).put("line", d.line).put("catOutL", "Regionalbus"))
+                .put("ProductAtStop", JSONObject().put("name", d.name).put("displayNumber", d.line).put("line", d.line).put("catOutL", if (d.name.startsWith("REX")) "Regionalexpress" else "Regionalbus"))
                 .put("name", d.name).put("type", "ST").put("stop", "Haltestelle").put("stopExtId", "470000000")
                 .put("time", plus(d.time, 0)).put("date", date).put("direction", d.direction)
                 .put("Stops", JSONObject().put("Stop", JSONArray(d.via.mapIndexed { i, id ->
                     JSONObject().put("name", "Halt $i").put("id", "A=1@O=Halt@L=47000000$i@i=A×$id@").put("extId", "47000000$i").also { st ->
+                        d.tracks[id]?.let { (plan, rt) -> st.put("arrTrack", plan); if (rt != null) st.put("rtArrTrack", rt) }
                         d.arrivals[id]?.let { (t, delay) ->
                             st.put("arrTime", plus(t, 0)).put("arrDate", date)
                             if (delay != null) st.put("rtArrTime", plus(t, delay)).put("rtArrDate", date)

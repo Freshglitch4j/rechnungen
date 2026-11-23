@@ -67,6 +67,9 @@ data class PassStop(
     /** Planmäßige und – falls gemeldet – erwartete Ankunft an diesem Halt. */
     val arr: LocalDateTime? = null,
     val rtArr: LocalDateTime? = null,
+    /** Planmäßiges und – bei Änderung – aktuelles Ankunftsgleis. */
+    val arrTrack: String? = null,
+    val rtArrTrack: String? = null,
 )
 
 data class Board(val departures: List<Departure>)
@@ -195,7 +198,10 @@ class VaoClient(
                     return try { LocalDateTime.of(LocalDate.parse(dt), parseTime(t)) } catch (e: Exception) { null }
                 }
                 val arr = at("arrDate", "arrTime", date)
-                PassStop(s.optString("name"), ids, arr, at("rtArrDate", "rtArrTime", arr?.toLocalDate()?.toString() ?: date))
+                PassStop(
+                    s.optString("name"), ids, arr, at("rtArrDate", "rtArrTime", arr?.toLocalDate()?.toString() ?: date),
+                    s.optString("arrTrack").ifEmpty { null }, s.optString("rtArrTrack").ifEmpty { null },
+                )
             }
             return Departure(
                 planned = planned,
