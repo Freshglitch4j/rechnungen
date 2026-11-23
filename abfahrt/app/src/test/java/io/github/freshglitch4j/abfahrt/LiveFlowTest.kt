@@ -143,6 +143,21 @@ class LiveFlowTest {
         assertEquals(io.github.freshglitch4j.abfahrt.core.TransferState.BROKEN, transferBeforeRex().state)
     }
 
+    @Test fun aktualisierenHoechstensAlle10Sekunden() {
+        now = at(16, 30)
+        step()
+        val base = vao.boardRequests
+        now = at(16, 30, 2); step(Controller.ACTION_REFRESH)
+        assertEquals(base + 2, vao.boardRequests)      // eine Abfrage je Haltestelle
+        // mehrfach hintereinander getippt: keine weiteren Abfragen
+        now = at(16, 30, 4); step(Controller.ACTION_REFRESH)
+        now = at(16, 30, 9); step(Controller.ACTION_REFRESH)
+        assertEquals(base + 2, vao.boardRequests)
+        // nach 10 Sekunden wieder möglich
+        now = at(16, 30, 12); step(Controller.ACTION_REFRESH)
+        assertEquals(base + 4, vao.boardRequests)
+    }
+
     @Test fun farbeNachVerspaetung() {
         fun colorFor(delay: Int?, cancelled: Boolean = false): Int {
             vao.boards["at:47:64459"] = listOf(FakeDep("16:46", delay, cancelled = cancelled))

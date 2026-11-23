@@ -31,6 +31,8 @@ object Live {
     @Volatile var states: Map<String, ConnState> = emptyMap()
     @Volatile var display: Display? = null
     @Volatile var demoStart: LocalDateTime? = null
+    /** Zeitpunkt der letzten manuellen Aktualisierung (Sperre gegen Mehrfachtippen). */
+    @Volatile var lastManualRefresh: LocalDateTime? = null
 
     /** Für Tests austauschbar. */
     @Volatile var clock: () -> LocalDateTime = { LocalDateTime.now(ZONE) }
@@ -45,7 +47,7 @@ object Live {
     }
 
     fun reset() {
-        window = null; states = emptyMap(); display = null; demoStart = null
+        window = null; states = emptyMap(); display = null; demoStart = null; lastManualRefresh = null
     }
 }
 
@@ -61,6 +63,7 @@ object Controller {
     const val ACTION_DEMO_STOP = "io.github.freshglitch4j.abfahrt.DEMO_STOP"
 
     const val DEMO_MINUTES = 5L
+    const val MANUAL_REFRESH_SEC = 10L
 
     /** Ist jetzt – ohne Netzabfrage beurteilt – etwas anzuzeigen? */
     fun somethingActive(context: Context, now: LocalDateTime = Live.clock()): Boolean {
@@ -133,7 +136,10 @@ object Controller {
 
         val today = now.toLocalDate()
         if (s.accessId.isNotBlank()) {
-            val reqs = Engine.dueRequests(w, states, now, store.budgetLeft(today), force = action == ACTION_REFRESH)
+            // „Aktualisieren“ fragt höchstens alle 10 Sekunden außer der Reihe ab – mehrfaches Tippen kostet nichts.
+            val force = action == ACTION_REFRESH && Live.lastManualRefresh.let { it == null || Duration.between(it, now).seconds >= MANUAL_REFRESH_SEC }
+            if (force) Live.lastManualRefresh = now
+            val reqs = Engine.dueRequests(w, states, now, store.budgetLeft(today), force = force)
             if (reqs.isNotEmpty()) {
                 val client = VaoClient(Live.http, s.accessId, store, onCountedRequest = { store.countRequest(today) })
                 for (req in reqs) {
