@@ -68,15 +68,19 @@ class StandActivity : Activity() {
         }
     }
 
+    private var scroll: android.widget.ScrollView? = null
+
     private fun render() {
         applyBrightness()
         val d = Live.display
         val now = Live.clock()
+        val keepY = scroll?.scrollY ?: 0
         root.removeAllViews()
+        root.fitsSystemWindows = true
         val col = Ui.column(this)
         // Inhalt wandert minütlich um ein paar Pixel – schont das OLED-Display.
-        val shift = (now.minute % 5) * Ui.dp(this, 6)
-        col.setPadding(Ui.dp(this, 24) + shift, Ui.dp(this, 8), Ui.dp(this, 24), Ui.dp(this, 20))
+        val shift = (now.minute % 5) * Ui.dp(this, 4)
+        col.setPadding(Ui.dp(this, 24) + shift, Ui.dp(this, 4), Ui.dp(this, 24), Ui.dp(this, 12))
 
         if (d == null) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -90,45 +94,58 @@ class StandActivity : Activity() {
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (d.demo) col.addView(Ui.text(this, "DEMO – ERFUNDENE WERTE", 13f, Notifier.YELLOW, true).apply { letterSpacing = 0.1f })
-            col.addView(Ui.spacer(this, 10))
-            col.addView(Ui.departures(this, d, now, 1.35f, countdown = false))
+            col.addView(Ui.departures(this, d, now, 1.3f, countdown = false, compact = true))
         }
-
-        col.addView(Ui.spacer(this, 20))
-        val buttons = Ui.rowLayout(this)
-        fun add(label: String, onClick: () -> Unit) {
-            buttons.addView(
-                Ui.button(this, label, onClick).apply {
-                    setSingleLine()
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
-                    setPadding(0, paddingTop, 0, paddingBottom)
-                },
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-            )
-        }
-        add("Schließen") { finish() }
-        if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
-        col.addView(buttons)
 
         // Aktuelle Uhrzeit groß, oben mittig, durch eine Linie von den Abfahrten getrennt.
         val page = Ui.column(this)
-        page.addView(Ui.text(this, Fmt.time(now), 64f, Ui.WHITE, true).apply {
+        page.addView(Ui.text(this, Fmt.time(now), 56f, Ui.WHITE, true).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             fontFeatureSettings = "tnum"
-            setPadding(shift, Ui.dp(this@StandActivity, 48) + shift, 0, 0)
+            setPadding(shift, Ui.dp(this@StandActivity, 16) + shift, 0, 0)
         })
         // Darunter klein: wie aktuell die Daten sind.
-        if (d != null) page.addView(Ui.text(this, updatedText(d.asOf, now), 15f, Ui.DIM).apply {
+        if (d != null) page.addView(Ui.text(this, updatedText(d.asOf, now), 14f, Ui.DIM).apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(shift, Ui.dp(this@StandActivity, 2), 0, 0)
+            setPadding(shift, 0, 0, 0)
         })
-        page.addView(Ui.divider(this, 22).apply {
+        page.addView(Ui.divider(this, 14).apply {
             (layoutParams as LinearLayout.LayoutParams).apply {
                 leftMargin = Ui.dp(this@StandActivity, 24); rightMargin = Ui.dp(this@StandActivity, 24)
             }
         })
         page.addView(col)
-        root.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+
+        // Knöpfe fest am unteren Rand – immer sichtbar, auch wenn viele Fahrten angezeigt werden.
+        val buttons = Ui.rowLayout(this).apply {
+            setBackgroundColor(0xFF000000.toInt())
+            setPadding(Ui.dp(this@StandActivity, 20), Ui.dp(this@StandActivity, 6), Ui.dp(this@StandActivity, 20), Ui.dp(this@StandActivity, 8))
+        }
+        fun add(label: String, onClick: () -> Unit) {
+            buttons.addView(
+                Ui.button(this, label, onClick).apply {
+                    setSingleLine()
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+                    setPadding(0, paddingTop, 0, paddingBottom)
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    leftMargin = Ui.dp(this@StandActivity, 4); rightMargin = Ui.dp(this@StandActivity, 4)
+                },
+            )
+        }
+        add("Schließen") { finish() }
+        if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
+
+        val sv = android.widget.ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(page)
+        }
+        scroll = sv
+        val frame = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        frame.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        frame.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(frame, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (keepY > 0) sv.post { sv.scrollTo(0, keepY) }
     }
 
     companion object {

@@ -89,24 +89,58 @@ object Ui {
      * Die Abfahrten als große, ruhige Zeilen: Linie und Haltestelle, Plan → erwartet,
      * Status in Farbe, verbleibende Zeit. [scale] vergrößert alles für die Standanzeige.
      */
-    fun departures(c: Context, d: Display, now: LocalDateTime, scale: Float = 1f, countdown: Boolean = true): LinearLayout {
+    /**
+     * [compact]: nur die erste Fahrt der vorderen Option groß; alle weiteren Fahrten
+     * (Anschlüsse und andere Optionen) platzsparend mit Zeit und Status in einer Zeile.
+     */
+    fun departures(c: Context, d: Display, now: LocalDateTime, scale: Float = 1f, countdown: Boolean = true, compact: Boolean = false): LinearLayout {
         val col = column(c)
         // Die vordere Option groß, weitere kleiner und durch eine Linie abgetrennt.
         // Bei Umstiegsverbindungen folgen die weiteren Fahrten kleiner, mit Umstiegshinweis.
         val options = d.options.ifEmpty { listOfNotNull(d.primary).map { Option(it.conn.id, listOf(it)) } }
         for ((i, o) in options.withIndex()) {
-            if (i == 1) col.addView(divider(c, (16 * scale).toInt())) else if (i > 1) col.addView(spacer(c, (14 * scale).toInt()))
+            if (i == 1) col.addView(divider(c, ((if (compact) 10 else 16) * scale).toInt())) else if (i > 1) col.addView(spacer(c, (10 * scale).toInt()))
             val main = if (i == 0) scale * 1.15f else scale * 0.72f
             for ((j, r) in o.open.withIndex()) {
+                val small = compact && (i > 0 || j > 0)
                 r.transfer?.takeIf { j > 0 || o.rows.first().gone }?.let { t ->
-                    col.addView(text(c, "↓ " + t.text, 15f * (if (i == 0) scale else main), transferColor(t), t.state != TransferState.OK && t.state != TransferState.UNKNOWN).apply {
-                        setPadding(0, dp(c, 6), 0, dp(c, 4))
+                    val size = if (compact) 13f * scale else 15f * (if (i == 0) scale else main)
+                    col.addView(text(c, "↓ " + t.text, size, transferColor(t), t.state != TransferState.OK && t.state != TransferState.UNKNOWN).apply {
+                        setPadding(0, dp(c, if (compact) 4 else 6), 0, dp(c, if (compact) 2 else 4))
                     })
                 }
-                val legScale = if (j == 0) main else main * 0.72f
-                col.addView(departure(c, r, now, legScale, countdown).apply { if (i > 0) alpha = 0.85f })
+                if (small) {
+                    col.addView(compactDeparture(c, r, scale))
+                } else {
+                    val legScale = if (j == 0) main else main * 0.72f
+                    col.addView(departure(c, r, now, legScale, countdown).apply { if (i > 0) alpha = 0.85f })
+                }
             }
         }
+        return col
+    }
+
+    /** Zweizeilig: Linie und Haltestelle klein, darunter „06:42 → 06:43  +1 MIN“. */
+    private fun compactDeparture(c: Context, r: Row, scale: Float): LinearLayout {
+        val col = column(c)
+        if (r.gone) col.alpha = 0.45f
+        val color = Notifier.color(r)
+        col.addView(text(c, "${r.lineLabel} · ${Fmt.where(r)}", 12.5f * scale, DIM).apply { setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END })
+        val status = if (r.status == Status.CANCELLED) "FÄLLT AUS" else r.statusText.uppercase()
+        val time: CharSequence = if (r.status == Status.CANCELLED) SpannableString(Fmt.time(r.planned)).apply {
+            setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(color), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } else times(r, color)
+        val line = android.text.SpannableStringBuilder(time).append("   ")
+        val st = line.length
+        line.append(status)
+        line.setSpan(ForegroundColorSpan(if (r.status == Status.CANCELLED) WHITE else color), st, line.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        line.setSpan(StyleSpan(Typeface.BOLD), st, line.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        line.setSpan(RelativeSizeSpan(0.62f), st, line.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        if (r.status == Status.CANCELLED) line.setSpan(android.text.style.BackgroundColorSpan(color), st, line.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        col.addView(text(c, line, 24f * scale, if (r.hasRealtime) WHITE else DIM, !r.hasRealtime).apply { fontFeatureSettings = "tnum" })
+        r.arrival?.let { a -> col.addView(text(c, a.text, 11.5f * scale, if (a.changed) Notifier.YELLOW else FAINT)) }
+        if (r.note.isNotEmpty()) col.addView(text(c, r.note, 12f * scale, DIM))
         return col
     }
 
