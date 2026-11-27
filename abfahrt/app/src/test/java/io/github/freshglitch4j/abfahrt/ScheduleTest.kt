@@ -34,7 +34,7 @@ class ScheduleTest {
         val w = Schedule.windowsOn(fri, s)
         assertEquals(2, w.size)
         val heim = w.single { it.kind == TripKind.HEIM }
-        assertEquals(listOf("heim-rex-fr"), heim.connections.map { it.id })
+        assertEquals(listOf("heim-rex-fr", "heim-fr-bus"), heim.connections.map { it.id })
         assertEquals(LocalTime.of(11, 59), heim.start.toLocalTime())
     }
 

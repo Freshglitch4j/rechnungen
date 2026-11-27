@@ -107,7 +107,7 @@ data class Settings(
 
     companion object {
         /** Version des gespeicherten Formats; neuere Voreinstellungen werden bei älteren Ständen ergänzt. */
-        const val SCHEMA = 2
+        const val SCHEMA = 3
 
         fun fromJson(o: JSONObject): Settings {
             val arr = o.optJSONArray("connections")
@@ -118,6 +118,12 @@ data class Settings(
                 val defaults = defaultConnections().associateBy { it.id }
                 conns = conns.map { if (it.id == "hin-gratten") it.copy(group = KOMBI) else it } +
                     listOf("hin-kombi-rex", "hin-kombi-bus").filter { id -> conns.none { it.id == id } }.map { defaults.getValue(it) }
+            }
+            if (arr != null && o.optInt("schema", 1) < 3) {
+                // Version 3: freitags Bus 4068 ab Wörgl Hbf als Anschluss an den REX 12:29
+                val defaults = defaultConnections().associateBy { it.id }
+                conns = conns.map { if (it.id == "heim-rex-fr") it.copy(group = KOMBI_FR) else it } +
+                    listOf("heim-fr-bus").filter { id -> conns.none { it.id == id } }.map { defaults.getValue(it) }
             }
             val pinned = mutableMapOf<TripKind, String>()
             o.optJSONObject("pinned")?.let { p ->
@@ -145,6 +151,8 @@ const val WOERGL_HBF = "at:47:1170"
 const val KUNDL_BF = "at:47:1172"
 const val KUNDL_GEMEINDESAAL = "at:47:64459"
 const val KOMBI = "Umstieg Wörgl"
+const val KOMBI_FR = "Umstieg Wörgl Fr"
+const val MOOSEGG = "at:47:65761"
 
 
 /**
@@ -154,7 +162,7 @@ const val KOMBI = "Umstieg Wörgl"
 fun defaultConnections(): List<Connection> = listOf(
     Connection(
         id = "hin-moosegg", kind = TripKind.HIN, label = "Bus 760",
-        stopName = "Kastengstatt Moosegg", stopId = "at:47:65761",
+        stopName = "Kastengstatt Moosegg", stopId = MOOSEGG,
         time = LocalTime.of(6, 33), days = MO_FR, line = "760",
         towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
     ),
@@ -192,6 +200,12 @@ fun defaultConnections(): List<Connection> = listOf(
         id = "heim-rex-fr", kind = TripKind.HEIM, label = "REX 2",
         stopName = "Kundl Bahnhof", stopId = KUNDL_BF,
         time = LocalTime.of(12, 29), days = setOf(DayOfWeek.FRIDAY), line = "REX",
-        towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF,
+        towardsName = "Wörgl Hbf", towardsId = WOERGL_HBF, group = KOMBI_FR,
+    ),
+    Connection(
+        id = "heim-fr-bus", kind = TripKind.HEIM, label = "Bus 4068",
+        stopName = "Wörgl Hbf", stopId = WOERGL_HBF,
+        time = LocalTime.of(12, 45), days = setOf(DayOfWeek.FRIDAY), line = "4068",
+        towardsName = "Kastengstatt Moosegg", towardsId = MOOSEGG, group = KOMBI_FR,
     ),
 )
