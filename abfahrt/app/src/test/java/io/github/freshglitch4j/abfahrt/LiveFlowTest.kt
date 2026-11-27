@@ -174,6 +174,27 @@ class LiveFlowTest {
         assertEquals("an Wörgl Hbf · Gleis 5 statt 3", changed.text)
     }
 
+    @Test fun displayAusOeffnetStandanzeige() {
+        store.settings = store.settings.copy(autoStand = true)
+        now = at(16, 30)
+        val controller = Robolectric.buildService(LiveService::class.java, Intent(ctx, LiveService::class.java).setAction(Controller.ACTION_TICK))
+        controller.create(); controller.startCommand(0, 1)
+        waitForWorker()
+        store.clearLog()
+        ctx.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(2))
+        Thread.sleep(300); waitForWorker()
+        assertTrue(store.readLog(), store.readLog().contains("Standanzeige"))
+        // nach „Schließen“ in diesem Fenster nicht erneut
+        store.standClosedKey = Live.window!!.key
+        store.clearLog()
+        ctx.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(2))
+        Thread.sleep(300); waitForWorker()
+        assertFalse(store.readLog(), store.readLog().contains("Standanzeige"))
+        controller.destroy()
+    }
+
     @Test fun farbeNachVerspaetung() {
         fun colorFor(delay: Int?, cancelled: Boolean = false): Int {
             vao.boards["at:47:64459"] = listOf(FakeDep("16:46", delay, cancelled = cancelled))

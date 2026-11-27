@@ -2,8 +2,10 @@ package io.github.freshglitch4j.abfahrt
 
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Handler
 import android.os.HandlerThread
@@ -19,15 +21,35 @@ class LiveService : Service() {
     private lateinit var thread: HandlerThread
     private lateinit var handler: Handler
 
+    /**
+     * Wird das Display während eines Anzeigefensters ausgeschaltet (Handy gesperrt
+     * und weggelegt), öffnet sich die Standanzeige über dem Sperrbildschirm.
+     */
+    private val screenOff = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_OFF) handler.postDelayed({ showStandIfWanted("Display aus") }, 1500)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         thread = HandlerThread("abfahrt-live").apply { start() }
         handler = Handler(thread.looper)
+        registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(screenOff) } catch (e: Exception) { }
         thread.quitSafely()
         super.onDestroy()
+    }
+
+    private fun showStandIfWanted(reason: String) {
+        val store = Store(this)
+        val d = Live.display ?: return
+        if (!store.settings.autoStand || StandActivity.alive) return
+        if (store.standClosedKey == d.window.key) return
+        Notifier.launchStand(this, reason)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,7 +96,7 @@ class LiveService : Service() {
             DepartureWidget.refresh(this)
             Scheduler.scheduleTick(this, step.nextWake)
             Scheduler.scheduleNextStart(this)
-            if (step.windowStarted && Store(this).settings.autoStand) Notifier.launchStand(this)
+            if (step.windowStarted) showStandIfWanted("Beginn")
         } finally {
             if (wakeLock.isHeld) wakeLock.release()
         }

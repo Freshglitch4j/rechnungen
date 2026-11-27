@@ -17,7 +17,7 @@ import io.github.freshglitch4j.abfahrt.core.Schedule
 /**
  * Standanzeige: schwarzer Vollbildschirm über dem Sperrbildschirm, der die
  * Abfahrten groß zeigt und das Display eingeschaltet lässt, solange ein
- * Anzeigefenster läuft. Gedacht für „Handy liegt vor mir“.
+ * Anzeigefenster läuft (außer in der Tasche). Helligkeit wie im System eingestellt.
  */
 class StandActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -34,15 +34,41 @@ class StandActivity : Activity() {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-        root = FrameLayout(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
-            // Gedimmt wie ein Always-On-Display; Tippen macht 15 Sekunden lang hell.
-            setOnClickListener {
-                brightUntil = System.currentTimeMillis() + 15_000
-                applyBrightness()
-            }
-        }
+        alive = true
+        getSystemService(android.app.NotificationManager::class.java).cancel(Notifier.ID_STAND)
+        root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
         setContentView(root)
+    }
+
+    override fun onDestroy() {
+        alive = false
+        super.onDestroy()
+    }
+
+    /** In der Tasche (Näherungssensor verdeckt) darf das Display normal ausgehen. */
+    private var covered = false
+    private val proximity = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            covered = e.values[0] < minOf(e.sensor.maximumRange, 3f)
+            keepOn(Live.display != null)
+        }
+        override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+    }
+
+    private fun keepOn(active: Boolean) {
+        if (active && !covered) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val sm = getSystemService(android.hardware.SensorManager::class.java)
+        sm?.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY)?.let { sm.registerListener(proximity, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) }
+    }
+
+    override fun onPause() {
+        getSystemService(android.hardware.SensorManager::class.java)?.unregisterListener(proximity)
+        super.onPause()
     }
 
     override fun onStart() {
@@ -59,20 +85,15 @@ class StandActivity : Activity() {
         super.onStop()
     }
 
-    private var brightUntil = 0L
-
-    private fun applyBrightness() {
-        val bright = System.currentTimeMillis() < brightUntil
-        window.attributes = window.attributes.apply {
-            screenBrightness = if (bright) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else DIM_BRIGHTNESS
-        }
-    }
+    /** Wurde in dieser Standanzeige schon ein Fenster gezeigt? Dann nach dessen Ende schließen. */
+    private var hadDisplay = false
 
     private var scroll: android.widget.ScrollView? = null
 
     private fun render() {
-        applyBrightness()
         val d = Live.display
+        if (d != null) hadDisplay = true
+        else if (hadDisplay) { finish(); return }
         val now = Live.clock()
         val keepY = scroll?.scrollY ?: 0
         root.removeAllViews()
@@ -83,7 +104,7 @@ class StandActivity : Activity() {
         col.setPadding(Ui.dp(this, 24) + shift, Ui.dp(this, 4), Ui.dp(this, 24), Ui.dp(this, 12))
 
         if (d == null) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            keepOn(false)
             col.addView(Ui.text(this, "Keine aktuelle Abfahrt", 24f, Ui.WHITE, true))
             val store = Store(this)
             val next = Schedule.upcoming(now, store.settings).firstOrNull { it.start.isAfter(now) && it.key != store.dismissedKey }
@@ -92,7 +113,7 @@ class StandActivity : Activity() {
                 col.addView(Ui.text(this, "Nächste Anzeige: ${next.kind.title} ${DepartureWidget.dayLabel(next, now.toLocalDate())} ab ${Fmt.time(next.start)}", 16f, Ui.DIM))
             }
         } else {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            keepOn(true)
             if (d.demo) col.addView(Ui.text(this, "DEMO – ERFUNDENE WERTE", 13f, Notifier.YELLOW, true).apply { letterSpacing = 0.1f })
             col.addView(Ui.departures(this, d, now, 1.3f, countdown = false, compact = true))
         }
@@ -133,7 +154,11 @@ class StandActivity : Activity() {
                 },
             )
         }
-        add("Schließen") { finish() }
+        add("Schließen") {
+            // für dieses Anzeigefenster nicht mehr von selbst öffnen
+            Live.window?.let { Store(this).standClosedKey = it.key }
+            finish()
+        }
         if (d != null) add("Aktualisieren") { LiveService.start(this, Controller.ACTION_REFRESH) }
 
         val sv = android.widget.ScrollView(this).apply {
@@ -160,7 +185,7 @@ class StandActivity : Activity() {
             }
         }
 
-        /** Displayhelligkeit der gedimmten Standanzeige (0 = dunkelste Stufe, 1 = voll). */
-        const val DIM_BRIGHTNESS = 0.05f
+        /** Standanzeige ist gerade geöffnet (auch hinter dem ausgeschalteten Display). */
+        @Volatile var alive = false
     }
 }

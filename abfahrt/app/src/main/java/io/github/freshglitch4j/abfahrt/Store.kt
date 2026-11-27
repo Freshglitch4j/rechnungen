@@ -71,6 +71,11 @@ class Store(context: Context) : VersionCache {
         get() = prefs.getString("dismissed", "") ?: ""
         set(value) { prefs.edit().putString("dismissed", value).apply() }
 
+    /** Fenster, in dem die Standanzeige mit „Schließen“ beendet wurde – dann nicht erneut öffnen. */
+    var standClosedKey: String
+        get() = prefs.getString("standClosed", "") ?: ""
+        set(value) { prefs.edit().putString("standClosed", value).apply() }
+
     // ---- Richtungsfilter des Servers ---------------------------------------
 
     /** null = noch nicht bekannt, ob der Server die Richtungs-ID akzeptiert. */

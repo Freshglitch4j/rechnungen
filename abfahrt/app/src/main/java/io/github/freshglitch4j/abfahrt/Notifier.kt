@@ -226,12 +226,13 @@ object Notifier {
     }
 
     /** Schaltet die Standanzeige über dem Sperrbildschirm ein (Vollbild-Intent). */
-    fun launchStand(context: Context) {
+    fun launchStand(context: Context, reason: String) {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.canUseFullScreenIntent()) {
             Store(context).log("Standanzeige: Vollbild-Berechtigung fehlt")
             return
         }
+        Store(context).log("Standanzeige wird geöffnet ($reason)")
         val n = Notification.Builder(context, CHANNEL_STAND)
             .setSmallIcon(R.drawable.ic_stat_bus)
             .setContentTitle("Abfahrten")
